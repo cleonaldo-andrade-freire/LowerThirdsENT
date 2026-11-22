@@ -1,0 +1,35 @@
+[
+  {
+    "id": "preset-mariana-souza",
+    "name": "Mariana Souza",
+    "role": "Apresentadora",
+    "photo": "",
+    "template": "news",
+    "autoHide": 0,
+    "x": 110,
+    "y": 70,
+    "scale": 1
+  },
+  {
+    "id": "32fc09e1-beb2-475b-b04d-22374feb0622",
+    "name": "Cleonaldo Andrade Freire",
+    "role": "Mídia ENT",
+    "photo": "/uploads/photo_1795283494391.webp",
+    "template": "spotlight",
+    "autoHide": 3,
+    "x": 110,
+    "y": 70,
+    "scale": 0.9
+  },
+  {
+    "id": "preset-carlos-andrade",
+    "name": "Carlos Andrade",
+    "role": "Diretor de Tecnologia",
+    "photo": "/uploads/photo_1795352694303.webp",
+    "template": "modern",
+    "autoHide": 4,
+    "x": 26,
+    "y": 195,
+    "scale": 1.12
+  }
+]

@@ -1,0 +1,14 @@
+# Dependências (reinstaladas com npm install)
+node_modules/
+
+# Dados locais de cada computador
+uploads/*
+!uploads/.gitkeep
+presets.json.tmp
+presets.corrupt-*.json
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+*.log
+.env

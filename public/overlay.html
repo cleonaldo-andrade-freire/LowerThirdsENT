@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Lower Thirds — Overlay</title>
+<meta name="viewport" content="width=1920, height=1080">
+<style>
+  /* ================================================================
+     BASE — 1920x1080, fundo transparente, animações só em
+     transform/opacity (compositor da GPU → 60 FPS no OBS)
+     ================================================================ */
+  :root {
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
+    --ease-in: cubic-bezier(.7, 0, .84, 0);
+    --ease-back: cubic-bezier(.34, 1.56, .64, 1);
+    --h: 210; /* matiz do avatar de iniciais (definido via JS) */
+  }
+  html, body {
+    margin: 0; padding: 0;
+    width: 1920px; height: 1080px;
+    overflow: hidden;
+    background: transparent !important;
+  }
+  /* ?preview=1 → fundo xadrez para testar no navegador */
+  /* ?preview=1 → ajusta a tela 1920x1080 ao tamanho da janela, com fundo xadrez */
+  html.preview, html.preview body { width: 100%; height: 100%; }
+  html.preview body { background: #0d0e12 !important; }
+  /* &bg=none → transparente: quem desenha o fundo é a página que embute (estúdio do Dock) */
+  html.preview.nobg body { background: transparent !important; }
+  html.preview.nobg #stage { background: none !important; }
+  html.preview #stage {
+    position: absolute; left: 0; top: 0;
+    transform-origin: 0 0;
+    background-color: #2b2f36;
+    background-image:
+      linear-gradient(45deg, #353a42 25%, transparent 25%, transparent 75%, #353a42 75%),
+      linear-gradient(45deg, #353a42 25%, transparent 25%, transparent 75%, #353a42 75%);
+    background-size: 40px 40px;
+    background-position: 0 0, 20px 20px;
+  }
+  #stage { position: relative; width: 1920px; height: 1080px; }
+
+  .lt {
+    position: absolute;
+    left: 110px;
+    bottom: 120px;
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    font-family: "Segoe UI", "Inter", system-ui, -apple-system, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .lt:not(.is-in):not(.is-out):not(.is-static) { visibility: hidden; }
+  .lt.is-static { opacity: 1; animation: none; }   /* pré-visualização do editor, sem animação */
+  .lt.is-in  { animation: ltIn .8s var(--ease-out) both; }
+  .lt.is-out { animation: ltOut .45s var(--ease-in) both; }
+
+  @keyframes ltIn  { from { opacity: 0; transform: translate3d(-70px, 0, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+  @keyframes ltOut { from { opacity: 1; transform: translate3d(0, 0, 0); } to { opacity: 0; transform: translate3d(-50px, 0, 0); } }
+
+  /* Envelope de posição/tamanho (definidos por slot). Escala estática, ancorada no canto inferior esquerdo. */
+  .lt-scale { position: relative; transform: scale(var(--s, 1)); transform-origin: 0 100%; }
+  .lt-handle { display: none; }
+
+  .lt-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    overflow: hidden;
+  }
+  .lt-bg { position: absolute; inset: 0; z-index: 0; }
+  .lt-avatar, .lt-text { position: relative; z-index: 1; }
+
+  .lt-avatar {
+    flex: 0 0 auto;
+    width: 104px; height: 104px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, hsl(var(--h) 72% 58%), hsl(calc(var(--h) + 45) 68% 40%));
+    will-change: transform, opacity;
+  }
+  .lt-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .lt-initials {
+    display: none;
+    font-weight: 700; font-size: 40px; line-height: 1;
+    color: #fff; letter-spacing: .03em;
+    text-shadow: 0 2px 6px rgba(0,0,0,.25);
+  }
+  .lt.no-photo .lt-avatar img { display: none; }
+  .lt.no-photo .lt-initials  { display: block; }
+
+  .lt-text { display: flex; flex-direction: column; min-width: 0; max-width: 1150px; }
+  .lt-name, .lt-role {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    will-change: transform, opacity;
+  }
+  .lt.no-role .lt-role { display: none; }
+
+  .lt-shine, .lt-accent { position: absolute; z-index: 2; pointer-events: none; display: none; }
+
+  /* Entrada escalonada dos elementos internos */
+  .lt.is-in .lt-avatar { animation: popIn .65s .12s var(--ease-back) both; }
+  .lt.is-in .lt-name   { animation: slideUp .6s .22s var(--ease-out) both; }
+  .lt.is-in .lt-role   { animation: slideUp .6s .34s var(--ease-out) both; }
+
+  @keyframes popIn   { from { opacity: 0; transform: scale3d(.4, .4, 1); } to { opacity: 1; transform: scale3d(1, 1, 1); } }
+  @keyframes slideUp { from { opacity: 0; transform: translate3d(0, 18px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+  @keyframes slideRight { from { opacity: 0; transform: translate3d(-24px, 0, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+  @keyframes wipe    { from { transform: scale3d(0, 1, 1); } to { transform: scale3d(1, 1, 1); } }
+  @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+
+  /* Nomes longos */
+  .lt.long .lt-name { font-size: 34px !important; }
+
+  /* ================================================================
+     1) MODERN GLASS
+     ================================================================ */
+  .tpl-modern .lt-card {
+    padding: 14px 44px 14px 14px;
+    border-radius: 70px 26px 26px 70px;
+    box-shadow: 0 18px 40px rgba(5, 8, 20, .35);
+  }
+  .tpl-modern .lt-bg {
+    border-radius: inherit;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0) 55%),
+      linear-gradient(115deg, rgba(16, 20, 36, .86) 0%, rgba(38, 46, 88, .78) 55%, rgba(92, 64, 170, .72) 100%);
+    border: 1px solid rgba(255,255,255,.22);
+  }
+  .tpl-modern .lt-avatar { box-shadow: 0 0 0 3px rgba(255,255,255,.75), 0 0 0 7px rgba(255,255,255,.12); }
+  .tpl-modern .lt-name {
+    font-size: 42px; font-weight: 700; color: #fff; line-height: 1.15;
+    letter-spacing: -.01em;
+  }
+  .tpl-modern .lt-role {
+    margin-top: 2px;
+    font-size: 22px; font-weight: 500; line-height: 1.3;
+    color: rgba(214, 222, 255, .88); letter-spacing: .02em;
+  }
+  .tpl-modern .lt-shine, .tpl-gradient .lt-shine, .tpl-worship .lt-shine {
+    display: block;
+    top: -20%; bottom: -20%; left: 0; width: 36%;
+    background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,.38) 50%, transparent 100%);
+    transform: translate3d(-140%, 0, 0) skewX(-20deg);
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+  .tpl-modern.is-in .lt-bg    { animation: fadeIn .5s ease-out both; }
+  .tpl-modern.is-in .lt-shine, .tpl-gradient.is-in .lt-shine, .tpl-worship.is-in .lt-shine { animation: shine 1.2s .5s cubic-bezier(.4, 0, .2, 1) both; }
+  @keyframes shine {
+    0%   { opacity: 0; transform: translate3d(-140%, 0, 0) skewX(-20deg); }
+    15%  { opacity: 1; }
+    100% { opacity: 0; transform: translate3d(340%, 0, 0) skewX(-20deg); }
+  }
+
+  /* ================================================================
+     2) CLEAN CORPORATE
+     ================================================================ */
+  .tpl-clean .lt-card {
+    padding: 18px 46px 22px 18px;
+    border-radius: 14px;
+    box-shadow: 0 14px 34px rgba(10, 20, 45, .22), 0 2px 6px rgba(10, 20, 45, .12);
+  }
+  .tpl-clean .lt-bg { border-radius: inherit; background: #ffffff; }
+  .tpl-clean .lt-avatar { width: 96px; height: 96px; border-radius: 12px; }
+  .tpl-clean .lt-name {
+    font-size: 38px; font-weight: 700; line-height: 1.15;
+    color: #0f172a; letter-spacing: -.01em;
+  }
+  .tpl-clean .lt-role {
+    margin-top: 3px;
+    font-size: 21px; font-weight: 500; color: #4b5568;
+  }
+  .tpl-clean .lt-accent {
+    display: block;
+    left: 0; right: 0; bottom: 0; height: 5px;
+    background: linear-gradient(90deg, #1d4ed8, #0ea5e9);
+    transform-origin: 0 50%;
+    will-change: transform;
+  }
+  .tpl-clean.is-in .lt-accent { animation: wipe .8s .3s var(--ease-out) both; }
+  .tpl-clean.is-in .lt-name   { animation-name: slideRight; }
+  .tpl-clean.is-in .lt-role   { animation-name: slideRight; }
+
+  /* ================================================================
+     3) BROADCAST NEWS
+     ================================================================ */
+  .tpl-news { font-family: "Bahnschrift", "Arial Narrow", "Roboto Condensed", "Segoe UI", Arial, sans-serif; }
+  .tpl-news .lt-card { gap: 0; overflow: visible; align-items: stretch; }
+  .tpl-news .lt-avatar {
+    width: 124px; height: auto; min-height: 124px;
+    border-radius: 0;
+    border-right: 6px solid #ffcc00;
+  }
+  .tpl-news .lt-text { align-items: flex-start; justify-content: center; isolation: isolate; }
+  .tpl-news .lt-name, .tpl-news .lt-role { position: relative; max-width: 1150px; }
+  .tpl-news .lt-name::before, .tpl-news .lt-role::before {
+    content: "";
+    position: absolute; inset: 0; z-index: -1;
+    transform-origin: 0 50%;
+    will-change: transform;
+  }
+  .tpl-news .lt-name {
+    padding: 10px 40px 8px 26px;
+    font-size: 46px; font-weight: 700; line-height: 1.1;
+    text-transform: uppercase; letter-spacing: .01em;
+    color: #fff;
+  }
+  .tpl-news .lt-name::before { background: linear-gradient(90deg, #b30d26, #e0122f); }
+  .tpl-news .lt-role {
+    padding: 8px 40px 8px 26px;
+    font-size: 23px; font-weight: 600; line-height: 1.2;
+    text-transform: uppercase; letter-spacing: .1em;
+    color: #f2f2f2;
+  }
+  .tpl-news .lt-role::before { background: #0d0d0f; }
+  .tpl-news.no-role .lt-name { padding-top: 22px; padding-bottom: 20px; }
+  .tpl-news.is-in .lt-avatar        { animation: fadeIn .4s .05s ease-out both; }
+  .tpl-news.is-in .lt-name::before  { animation: wipe .5s .08s var(--ease-out) both; }
+  .tpl-news.is-in .lt-role::before  { animation: wipe .5s .2s var(--ease-out) both; }
+  .tpl-news.is-in .lt-name          { animation: slideRight .5s .28s var(--ease-out) both; }
+  .tpl-news.is-in .lt-role          { animation: slideRight .5s .38s var(--ease-out) both; }
+
+  /* ================================================================
+     4) CYBERTECH
+     ================================================================ */
+  .tpl-cyber {
+    --cut: 24px;
+    --neon: #00f0ff;
+    --neon2: #ff2bd6;
+    font-family: "Bahnschrift", "Rajdhani", "Segoe UI", Arial, sans-serif;
+  }
+  .tpl-cyber .lt-card {
+    padding: 18px 54px 18px 20px;
+    overflow: visible;
+    filter: drop-shadow(0 0 12px rgba(0, 240, 255, .45));
+  }
+  .tpl-cyber .lt-bg {
+    background: linear-gradient(90deg, var(--neon), var(--neon2));
+    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  }
+  .tpl-cyber .lt-bg::after {
+    content: "";
+    position: absolute; inset: 2px;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,240,255,.05) 0 2px, transparent 2px 4px),
+      linear-gradient(120deg, rgba(3, 8, 20, .95), rgba(10, 16, 38, .92));
+    clip-path: polygon(calc(var(--cut) - 1px) 0, 100% 0, 100% calc(100% - var(--cut) + 1px), calc(100% - var(--cut) + 1px) 100%, 0 100%, 0 calc(var(--cut) - 1px));
+  }
+  .tpl-cyber .lt-avatar {
+    width: 100px; height: 100px;
+    border-radius: 0;
+    clip-path: polygon(22% 0, 100% 0, 100% 78%, 78% 100%, 0 100%, 0 22%);
+    background: linear-gradient(135deg, hsl(var(--h) 90% 45%), #0a1030);
+  }
+  .tpl-cyber .lt-initials { color: #eaffff; text-shadow: 0 0 10px var(--neon); font-family: "Consolas", "Courier New", monospace; }
+  .tpl-cyber .lt-name {
+    font-size: 40px; font-weight: 700; line-height: 1.15;
+    text-transform: uppercase; letter-spacing: .08em;
+    color: #eaffff;
+    text-shadow: 0 0 14px rgba(0, 240, 255, .55);
+  }
+  .tpl-cyber .lt-role {
+    margin-top: 4px;
+    font-family: "Consolas", "Cascadia Mono", "Courier New", monospace;
+    font-size: 20px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--neon);
+  }
+  .tpl-cyber .lt-role::before { content: "> "; color: var(--neon2); }
+  .tpl-cyber .lt-accent {
+    display: block;
+    top: -7px; right: 36px; width: 140px; height: 4px;
+    background: var(--neon2);
+    box-shadow: 0 0 10px var(--neon2);
+    will-change: opacity;
+  }
+  .tpl-cyber.is-in .lt-card   { animation: glitch .5s .1s steps(1, end) both; }
+  .tpl-cyber.is-in .lt-accent { animation: wipe .5s .35s var(--ease-out) both, blink 2.4s 1s ease-in-out infinite; transform-origin: 100% 50%; }
+  .tpl-cyber.is-in .lt-avatar { animation: fadeIn .3s .15s steps(3, end) both; }
+  @keyframes glitch {
+    0%   { transform: translate3d(0, 0, 0); opacity: .2; }
+    15%  { transform: translate3d(-8px, 2px, 0); opacity: 1; }
+    30%  { transform: translate3d(6px, -2px, 0); opacity: .6; }
+    45%  { transform: translate3d(-3px, 0, 0); opacity: 1; }
+    60%  { transform: translate3d(2px, 1px, 0); }
+    100% { transform: translate3d(0, 0, 0); opacity: 1; }
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+
+  /* ================================================================
+     5) PODCAST — pílula escura com equalizador animado
+     ================================================================ */
+  .tpl-podcast .lt-card { padding: 14px 30px 14px 14px; border-radius: 999px; gap: 20px; }
+  .tpl-podcast .lt-bg { border-radius: inherit; background: #121316; border: 2px solid #ff6a3d; }
+  .tpl-podcast .lt-avatar { width: 92px; height: 92px; box-shadow: 0 0 0 3px #121316, 0 0 0 6px #ff6a3d; }
+  .tpl-podcast .lt-name { font-size: 38px; font-weight: 800; color: #fff; line-height: 1.15; }
+  .tpl-podcast .lt-role { margin-top: 3px; font-size: 18px; font-weight: 700; color: #ff8a63; text-transform: uppercase; letter-spacing: .14em; }
+  .tpl-podcast .lt-accent {
+    display: flex; position: relative; z-index: 1;
+    align-items: flex-end; gap: 5px; height: 38px; margin-left: 6px;
+  }
+  .tpl-podcast .lt-accent i { display: block; width: 6px; height: 100%; border-radius: 3px; background: #ff6a3d; transform-origin: 50% 100%; transform: scale3d(1, .35, 1); will-change: transform; }
+  .tpl-podcast.is-in .lt-accent i, .tpl-podcast.is-static .lt-accent i { animation: eq 1s ease-in-out infinite; }
+  .tpl-podcast .lt-accent i:nth-child(2) { animation-delay: -.33s !important; }
+  .tpl-podcast .lt-accent i:nth-child(3) { animation-delay: -.66s !important; }
+  @keyframes eq { 0%, 100% { transform: scale3d(1, .3, 1); } 50% { transform: scale3d(1, 1, 1); } }
+
+  /* ================================================================
+     6) SPORTS — barras inclinadas, itálico condensado
+     ================================================================ */
+  .tpl-sports { font-family: "Bahnschrift", "Arial Narrow", "Roboto Condensed", "Segoe UI", Arial, sans-serif; }
+  .tpl-sports .lt-card { gap: 0; overflow: visible; align-items: stretch; }
+  .tpl-sports .lt-bg { display: none; }
+  .tpl-sports .lt-avatar {
+    width: 124px; height: auto; min-height: 124px; border-radius: 0;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 20px) 100%, 0 100%);
+  }
+  .tpl-sports .lt-text { align-items: flex-start; justify-content: center; isolation: isolate; margin-left: -12px; }
+  .tpl-sports .lt-name, .tpl-sports .lt-role { position: relative; font-style: italic; text-transform: uppercase; }
+  .tpl-sports .lt-name::before, .tpl-sports .lt-role::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; transform-origin: 0 50%; will-change: transform;
+    clip-path: polygon(20px 0, 100% 0, calc(100% - 20px) 100%, 0 100%);
+  }
+  .tpl-sports .lt-name { padding: 10px 52px 8px 40px; font-size: 46px; font-weight: 800; line-height: 1.1; color: #fff; }
+  .tpl-sports .lt-name::before { background: linear-gradient(90deg, #0b2a6f, #1650d6); }
+  .tpl-sports .lt-role { margin-left: -14px; padding: 6px 46px 6px 40px; font-size: 22px; font-weight: 800; letter-spacing: .06em; color: #0b1a3a; }
+  .tpl-sports .lt-role::before { background: #ffd400; }
+  .tpl-sports .lt-accent {
+    display: block; left: 0; bottom: -10px; width: 260px; height: 6px;
+    background: repeating-linear-gradient(-60deg, #ffd400 0 10px, transparent 10px 18px);
+    transform-origin: 0 50%;
+  }
+  .tpl-sports.no-role .lt-name { padding-top: 22px; padding-bottom: 20px; }
+  .tpl-sports.is-in .lt-avatar       { animation: slideRight .45s .05s var(--ease-out) both; }
+  .tpl-sports.is-in .lt-name::before { animation: wipe .45s .1s var(--ease-out) both; }
+  .tpl-sports.is-in .lt-role::before { animation: wipe .45s .2s var(--ease-out) both; }
+  .tpl-sports.is-in .lt-name         { animation: slideRight .45s .25s var(--ease-out) both; }
+  .tpl-sports.is-in .lt-role         { animation: slideRight .45s .35s var(--ease-out) both; }
+  .tpl-sports.is-in .lt-accent       { animation: wipe .6s .4s var(--ease-out) both; }
+
+  /* ================================================================
+     7) MINIMAL — sem fundo, linha vertical e sombra no texto
+     ================================================================ */
+  .tpl-minimal .lt-card { overflow: visible; padding: 6px 0 6px 28px; gap: 20px; }
+  .tpl-minimal .lt-bg { display: none; }
+  .tpl-minimal .lt-accent {
+    display: block; left: 0; top: 0; bottom: 0; width: 5px; border-radius: 3px;
+    background: #fff; box-shadow: 0 0 12px rgba(0, 0, 0, .35);
+    transform-origin: 50% 100%;
+  }
+  .tpl-minimal .lt-avatar { width: 84px; height: 84px; box-shadow: 0 0 0 2px #fff, 0 6px 18px rgba(0,0,0,.35); }
+  .tpl-minimal .lt-name { font-size: 46px; font-weight: 600; color: #fff; line-height: 1.12; letter-spacing: -.01em; text-shadow: 0 2px 14px rgba(0,0,0,.6); }
+  .tpl-minimal .lt-role { margin-top: 2px; font-size: 22px; font-weight: 400; color: rgba(255,255,255,.88); letter-spacing: .04em; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
+  .tpl-minimal.is-in .lt-accent { animation: wipeY .6s .05s var(--ease-out) both; }
+  .tpl-minimal.is-in .lt-name   { animation-name: slideRight; }
+  .tpl-minimal.is-in .lt-role   { animation-name: slideRight; }
+  @keyframes wipeY { from { transform: scale3d(1, 0, 1); } to { transform: scale3d(1, 1, 1); } }
+
+  /* ================================================================
+     8) SPLIT BLOCK — avatar sobreposto e dois blocos de cor
+     ================================================================ */
+  .tpl-split .lt-card { gap: 0; overflow: visible; }
+  .tpl-split .lt-bg { display: none; }
+  .tpl-split .lt-avatar {
+    width: 112px; height: 112px; z-index: 3; margin-right: -30px;
+    border: 5px solid #fff; box-shadow: 0 6px 18px rgba(0,0,0,.3);
+  }
+  .tpl-split .lt-text { align-items: flex-start; isolation: isolate; }
+  .tpl-split .lt-name, .tpl-split .lt-role { position: relative; }
+  .tpl-split .lt-name::before, .tpl-split .lt-role::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; transform-origin: 0 50%; will-change: transform;
+  }
+  .tpl-split .lt-name { padding: 12px 38px 10px 50px; font-size: 40px; font-weight: 800; line-height: 1.12; color: #fff; }
+  .tpl-split .lt-name::before { background: linear-gradient(90deg, #5b21c9, #7c3aed); border-radius: 0 12px 0 0; }
+  .tpl-split .lt-role { margin-left: 24px; padding: 7px 30px 7px 26px; font-size: 20px; font-weight: 700; color: #2b1458; }
+  .tpl-split .lt-role::before { background: #fff; border-radius: 0 0 12px 0; box-shadow: 0 6px 16px rgba(0,0,0,.18); }
+  .tpl-split.no-role .lt-name::before { border-radius: 0 12px 12px 0; }
+  .tpl-split.is-in .lt-name::before { animation: wipe .5s .15s var(--ease-out) both; }
+  .tpl-split.is-in .lt-role::before { animation: wipe .5s .28s var(--ease-out) both; }
+  .tpl-split.is-in .lt-name         { animation: slideRight .5s .3s var(--ease-out) both; }
+  .tpl-split.is-in .lt-role         { animation: slideRight .5s .42s var(--ease-out) both; }
+
+  /* ================================================================
+     9) ELEGANT — serifa, fundo escuro e filetes dourados
+     ================================================================ */
+  .tpl-elegant .lt-card { padding: 22px 50px 22px 22px; border-radius: 4px; gap: 24px; }
+  .tpl-elegant .lt-bg { background: linear-gradient(90deg, rgba(12, 12, 14, .9), rgba(12, 12, 14, .62)); }
+  .tpl-elegant .lt-avatar { width: 96px; height: 96px; box-shadow: 0 0 0 2px #c9a45c; }
+  .tpl-elegant .lt-name { font-family: Georgia, "Times New Roman", serif; font-size: 42px; font-weight: 400; line-height: 1.15; color: #f6efe2; letter-spacing: .01em; }
+  .tpl-elegant .lt-role { margin-top: 6px; font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .3em; color: #c9a45c; }
+  .tpl-elegant .lt-accent {
+    display: block; left: 0; right: 0; top: 8px; bottom: 8px;
+    border-top: 1px solid rgba(201, 164, 92, .75); border-bottom: 1px solid rgba(201, 164, 92, .75);
+    transform-origin: 50% 50%;
+  }
+  .tpl-elegant.is-in .lt-bg     { animation: fadeIn .6s ease-out both; }
+  .tpl-elegant.is-in .lt-accent { animation: wipe .9s .2s var(--ease-out) both; }
+  .tpl-elegant.is-in .lt-avatar { animation: fadeIn .7s .2s ease-out both; }
+
+  /* ================================================================
+     10) SOFT CARD — cartão claro com avatar "saltando" para fora
+     ================================================================ */
+  .tpl-soft .lt-card { overflow: visible; padding: 18px 42px 18px 128px; min-height: 104px; }
+  .tpl-soft .lt-bg { border-radius: 24px; background: #fff7f0; box-shadow: 0 12px 30px rgba(60, 30, 20, .22); }
+  .tpl-soft .lt-avatar {
+    position: absolute; left: -14px; bottom: 10px; z-index: 2;
+    width: 122px; height: 122px; border-radius: 32px; border: 5px solid #fff;
+    box-shadow: 0 8px 20px rgba(60, 30, 20, .25);
+    transform-origin: 50% 100%;
+  }
+  .tpl-soft .lt-name { font-size: 36px; font-weight: 800; color: #3a1f14; line-height: 1.15; }
+  .tpl-soft .lt-role { margin-top: 3px; font-size: 19px; font-weight: 600; color: #e2673d; }
+  .tpl-soft.is-in .lt-bg { animation: fadeIn .4s ease-out both; }
+
+  /* ================================================================
+     11) PLANTÃO / AO VIVO — selo pulsante + barras branca e vermelha
+     ================================================================ */
+  .tpl-breaking { font-family: "Bahnschrift", "Arial Narrow", "Segoe UI", Arial, sans-serif; }
+  .tpl-breaking .lt-card { gap: 0; overflow: visible; align-items: stretch; }
+  .tpl-breaking .lt-bg { display: none; }
+  .tpl-breaking .lt-avatar { width: 120px; height: auto; min-height: 120px; border-radius: 0; }
+  .tpl-breaking .lt-text { align-items: flex-start; justify-content: center; isolation: isolate; }
+  .tpl-breaking .lt-name, .tpl-breaking .lt-role { position: relative; text-transform: uppercase; }
+  .tpl-breaking .lt-name::before, .tpl-breaking .lt-role::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; transform-origin: 0 50%; will-change: transform;
+  }
+  .tpl-breaking .lt-name { padding: 10px 44px 8px 26px; font-size: 44px; font-weight: 800; line-height: 1.1; color: #111; }
+  .tpl-breaking .lt-name::before { background: #fff; }
+  .tpl-breaking .lt-role { padding: 7px 44px 7px 26px; font-size: 22px; font-weight: 700; letter-spacing: .08em; color: #fff; }
+  .tpl-breaking .lt-role::before { background: #e10600; }
+  .tpl-breaking.no-role .lt-name { padding-top: 22px; padding-bottom: 20px; }
+  .tpl-breaking .lt-accent {
+    display: flex; align-items: center; gap: 8px;
+    left: 0; top: -40px; height: 34px; padding: 0 14px;
+    background: #e10600; color: #fff;
+    font-size: 18px; font-weight: 800; letter-spacing: .16em;
+  }
+  .tpl-breaking .lt-accent::after { content: "AO VIVO"; }
+  .tpl-breaking .lt-accent i:not(:first-child) { display: none; }
+  .tpl-breaking .lt-accent i:first-child { display: block; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
+  .tpl-breaking.is-in .lt-accent i:first-child, .tpl-breaking.is-static .lt-accent i:first-child { animation: blink 1s steps(2, jump-none) infinite; }
+  .tpl-breaking.is-in .lt-accent        { animation: slideUp .4s .05s var(--ease-out) both; }
+  .tpl-breaking.is-in .lt-avatar        { animation: fadeIn .35s .1s ease-out both; }
+  .tpl-breaking.is-in .lt-name::before  { animation: wipe .45s .12s var(--ease-out) both; }
+  .tpl-breaking.is-in .lt-role::before  { animation: wipe .45s .24s var(--ease-out) both; }
+  .tpl-breaking.is-in .lt-name          { animation: slideRight .45s .3s var(--ease-out) both; }
+  .tpl-breaking.is-in .lt-role          { animation: slideRight .45s .4s var(--ease-out) both; }
+
+  /* ================================================================
+     12) GRADIENT SOCIAL — gradiente vibrante e cargo em "pill"
+     ================================================================ */
+  .tpl-gradient .lt-card { padding: 14px 44px 14px 14px; border-radius: 26px; gap: 22px; box-shadow: 0 16px 36px rgba(60, 20, 120, .35); }
+  .tpl-gradient .lt-bg { border-radius: inherit; background: linear-gradient(110deg, #ff3d77 0%, #7a3cff 55%, #00b8ff 100%); }
+  .tpl-gradient .lt-avatar { width: 98px; height: 98px; border-radius: 22px; box-shadow: 0 0 0 3px rgba(255,255,255,.9); }
+  .tpl-gradient .lt-name { font-size: 40px; font-weight: 800; color: #fff; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,.18); }
+  .tpl-gradient .lt-role {
+    align-self: flex-start; margin-top: 6px; padding: 3px 14px;
+    border-radius: 999px; background: rgba(255,255,255,.22);
+    font-size: 18px; font-weight: 700; color: #fff;
+  }
+
+
+  /* ================================================================
+     13) FROSTED LIGHT — vidro claro, texto escuro, barra lateral
+     ================================================================ */
+  .tpl-frosted .lt-card { padding: 16px 46px 16px 24px; border-radius: 18px; gap: 20px; box-shadow: 0 14px 34px rgba(15, 23, 42, .22); }
+  .tpl-frosted .lt-bg {
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255,255,255,.95), rgba(236,241,255,.86));
+    border: 1px solid rgba(255,255,255,.9);
+  }
+  .tpl-frosted .lt-accent {
+    display: block; left: 0; top: 18px; bottom: 18px; width: 5px; border-radius: 0 3px 3px 0;
+    background: linear-gradient(180deg, #2563eb, #7c3aed); transform-origin: 50% 50%;
+  }
+  .tpl-frosted .lt-avatar { width: 92px; height: 92px; box-shadow: 0 0 0 3px #fff, 0 4px 12px rgba(0,0,0,.15); }
+  .tpl-frosted .lt-name { font-size: 38px; font-weight: 700; line-height: 1.15; color: #0f172a; letter-spacing: -.01em; }
+  .tpl-frosted .lt-role { margin-top: 2px; font-size: 20px; font-weight: 500; color: #475569; }
+  .tpl-frosted.is-in .lt-bg     { animation: fadeIn .45s ease-out both; }
+  .tpl-frosted.is-in .lt-accent { animation: wipeY .55s .25s var(--ease-out) both; }
+
+  /* ================================================================
+     14) TV CLÁSSICA — faixa azul que esmaece à direita + filete
+     ================================================================ */
+  .tpl-classic .lt-card { padding: 18px 150px 18px 20px; gap: 22px; }
+  .tpl-classic .lt-bg { background: linear-gradient(90deg, rgba(9, 24, 58, .96) 0%, rgba(9, 24, 58, .86) 62%, rgba(9, 24, 58, 0) 100%); }
+  .tpl-classic .lt-accent {
+    display: block; left: 0; right: 25%; top: 0; height: 3px;
+    background: linear-gradient(90deg, #fff, rgba(255,255,255,0)); transform-origin: 0 50%;
+  }
+  .tpl-classic .lt-avatar { width: 90px; height: 90px; box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
+  .tpl-classic .lt-name { font-size: 40px; font-weight: 600; line-height: 1.15; color: #fff; }
+  .tpl-classic .lt-role { margin-top: 2px; font-size: 20px; font-weight: 400; color: #9cc3ff; letter-spacing: .02em; }
+  .tpl-classic.is-in .lt-bg     { animation: fadeIn .5s ease-out both; }
+  .tpl-classic.is-in .lt-accent { animation: wipe .8s .15s var(--ease-out) both; }
+  .tpl-classic.is-in .lt-name   { animation-name: slideRight; }
+  .tpl-classic.is-in .lt-role   { animation-name: slideRight; }
+
+  /* ================================================================
+     15) OUTLINE — moldura de cantos, fundo sutil
+     ================================================================ */
+  .tpl-outline .lt-card { padding: 20px 44px 20px 20px; gap: 20px; overflow: visible; }
+  .tpl-outline .lt-bg { background: rgba(0, 0, 0, .38); }
+  .tpl-outline .lt-accent {
+    display: block; inset: -8px;
+    background:
+      linear-gradient(#fff, #fff) left top / 36px 3px, linear-gradient(#fff, #fff) left top / 3px 36px,
+      linear-gradient(#fff, #fff) right top / 36px 3px, linear-gradient(#fff, #fff) right top / 3px 36px,
+      linear-gradient(#fff, #fff) left bottom / 36px 3px, linear-gradient(#fff, #fff) left bottom / 3px 36px,
+      linear-gradient(#fff, #fff) right bottom / 36px 3px, linear-gradient(#fff, #fff) right bottom / 3px 36px;
+    background-repeat: no-repeat;
+    will-change: transform, opacity;
+  }
+  .tpl-outline .lt-avatar { width: 88px; height: 88px; box-shadow: 0 0 0 2px #fff; }
+  .tpl-outline .lt-name { font-size: 40px; font-weight: 600; line-height: 1.15; color: #fff; letter-spacing: .02em; }
+  .tpl-outline .lt-role { margin-top: 4px; font-size: 17px; font-weight: 500; text-transform: uppercase; letter-spacing: .24em; color: rgba(255,255,255,.78); }
+  .tpl-outline.is-in .lt-bg     { animation: fadeIn .5s .15s ease-out both; }
+  .tpl-outline.is-in .lt-accent { animation: bracketIn .6s var(--ease-out) both; }
+  @keyframes bracketIn { from { opacity: 0; transform: scale3d(1.08, 1.25, 1); } to { opacity: 1; transform: scale3d(1, 1, 1); } }
+
+  /* ================================================================
+     16) LINHA ÚNICA (WEBINAR) — compacto, nome | cargo na mesma linha
+     ================================================================ */
+  .tpl-inline .lt-card { padding: 10px 34px 10px 10px; border-radius: 999px; gap: 16px; box-shadow: 0 10px 26px rgba(0,0,0,.25); }
+  .tpl-inline .lt-bg { border-radius: inherit; background: #fff; }
+  .tpl-inline .lt-avatar { width: 64px; height: 64px; }
+  .tpl-inline .lt-initials { font-size: 26px; }
+  .tpl-inline .lt-text { flex-direction: row; align-items: center; gap: 18px; }
+  .tpl-inline .lt-name { font-size: 30px; font-weight: 700; color: #111827; }
+  .tpl-inline .lt-role { font-size: 22px; font-weight: 500; color: #4b5563; padding-left: 18px; border-left: 3px solid #e11d48; }
+  .tpl-inline.is-in .lt-name { animation-name: slideRight; }
+  .tpl-inline.is-in .lt-role { animation-name: slideRight; }
+  .lt.tpl-inline.long .lt-name { font-size: 26px !important; }
+
+  /* ================================================================
+     17) VERSÍCULO — texto bíblico em até 3 linhas + referência
+     Nome = texto do versículo · Função = referência (ex.: João 3:16)
+     ================================================================ */
+  .tpl-verse .lt-card { padding: 26px 56px 26px 42px; border-radius: 6px; gap: 0; }
+  .tpl-verse .lt-bg { background: linear-gradient(90deg, rgba(20, 16, 10, .9), rgba(20, 16, 10, .72)); }
+  .tpl-verse .lt-avatar { display: none; }
+  .tpl-verse .lt-accent {
+    display: block; left: 0; top: 0; bottom: 0; width: 6px;
+    background: linear-gradient(180deg, #f0d48a, #b8860b); transform-origin: 50% 100%;
+  }
+  .tpl-verse .lt-text { max-width: 1240px; }
+  .tpl-verse .lt-name {
+    white-space: normal; text-overflow: clip;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    font-family: Georgia, "Times New Roman", serif; font-style: italic;
+    font-size: 38px; font-weight: 400; line-height: 1.32; color: #fbf6ea;
+  }
+  .tpl-verse .lt-name::before { content: "\201C"; color: #f0d48a; margin-right: 2px; }
+  .tpl-verse .lt-name::after  { content: "\201D"; color: #f0d48a; margin-left: 2px; }
+  .tpl-verse .lt-role { margin-top: 12px; font-size: 20px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #f0d48a; }
+  .tpl-verse.is-in .lt-bg     { animation: fadeIn .6s ease-out both; }
+  .tpl-verse.is-in .lt-accent { animation: wipeY .6s .1s var(--ease-out) both; }
+  .tpl-verse.is-in .lt-name   { animation: fadeIn .8s .3s ease-out both; }
+  .tpl-verse.is-in .lt-role   { animation: slideUp .6s .6s var(--ease-out) both; }
+  .lt.tpl-verse.long .lt-name { font-size: 34px !important; }
+
+  /* ================================================================
+     18) RIBBON — faixa escura com ponta "rabo de andorinha" + cargo dourado
+     ================================================================ */
+  .tpl-ribbon .lt-card { overflow: visible; gap: 0; }
+  .tpl-ribbon .lt-bg { display: none; }
+  .tpl-ribbon .lt-avatar { width: 112px; height: 112px; z-index: 3; margin-right: -26px; border: 5px solid #1b1b1f; }
+  .tpl-ribbon .lt-text { align-items: flex-start; isolation: isolate; }
+  .tpl-ribbon .lt-name, .tpl-ribbon .lt-role { position: relative; }
+  .tpl-ribbon .lt-name::before, .tpl-ribbon .lt-role::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; transform-origin: 0 50%; will-change: transform;
+  }
+  .tpl-ribbon .lt-name { padding: 12px 74px 10px 46px; font-size: 38px; font-weight: 700; line-height: 1.12; color: #fff; }
+  .tpl-ribbon .lt-name::before {
+    background: #1b1b1f;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 30px) 50%, 100% 100%, 0 100%);
+  }
+  .tpl-ribbon .lt-role { margin-left: 30px; padding: 6px 42px 6px 20px; font-size: 17px; font-weight: 700; text-transform: uppercase; letter-spacing: .2em; color: #1b1b1f; }
+  .tpl-ribbon .lt-role::before {
+    background: linear-gradient(90deg, #c9973a, #f3d27a);
+    clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
+  }
+  .tpl-ribbon.is-in .lt-name::before { animation: wipe .55s .15s var(--ease-out) both; }
+  .tpl-ribbon.is-in .lt-role::before { animation: wipe .5s .3s var(--ease-out) both; }
+  .tpl-ribbon.is-in .lt-name         { animation: slideRight .5s .3s var(--ease-out) both; }
+  .tpl-ribbon.is-in .lt-role         { animation: slideRight .5s .45s var(--ease-out) both; }
+
+  /* ================================================================
+     19) SPOTLIGHT (ENTREVISTA) — foto grande com anel girando
+     ================================================================ */
+  .tpl-spotlight .lt-card { overflow: visible; gap: 0; }
+  .tpl-spotlight .lt-bg { display: none; }
+  .tpl-spotlight .lt-avatar { width: 136px; height: 136px; z-index: 2; border: 6px solid #0b1020; }
+  .tpl-spotlight .lt-initials { font-size: 50px; }
+  .tpl-spotlight .lt-accent {
+    display: block; box-sizing: border-box; z-index: 3;
+    left: -8px; top: calc(50% - 82px); width: 164px; height: 164px;
+    border-radius: 50%; border: 4px solid transparent; border-top-color: #38bdf8; border-right-color: #38bdf8;
+  }
+  .tpl-spotlight.is-in .lt-accent, .tpl-spotlight.is-static .lt-accent { animation: spin 2.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tpl-spotlight .lt-text {
+    margin-left: -28px; padding: 18px 44px 18px 52px;
+    background: linear-gradient(90deg, #0b1020, #17245a);
+    border-radius: 0 18px 18px 0;
+  }
+  .tpl-spotlight .lt-name { font-size: 38px; font-weight: 700; line-height: 1.15; color: #fff; }
+  .tpl-spotlight .lt-role { margin-top: 2px; font-size: 19px; font-weight: 500; color: #7dd3fc; }
+  .tpl-spotlight.is-in .lt-text { animation: slideRight .55s .15s var(--ease-out) both; }
+  .tpl-spotlight.is-in .lt-name { animation-delay: .3s; }
+  .tpl-spotlight.is-in .lt-role { animation-delay: .42s; }
+
+  /* ================================================================
+     20) TAGS EMPILHADAS — nome e cargo em etiquetas separadas
+     ================================================================ */
+  .tpl-stack .lt-card { overflow: visible; gap: 16px; }
+  .tpl-stack .lt-bg { display: none; }
+  .tpl-stack .lt-avatar { width: 100px; height: 100px; box-shadow: 0 0 0 4px #14b8a6, 0 8px 20px rgba(0,0,0,.3); }
+  .tpl-stack .lt-text { align-items: flex-start; gap: 6px; }
+  .tpl-stack .lt-name { padding: 8px 22px; border-radius: 12px; background: #0f172a; font-size: 36px; font-weight: 800; line-height: 1.15; color: #fff; box-shadow: 0 8px 20px rgba(0,0,0,.25); }
+  .tpl-stack .lt-role { margin-left: 18px; padding: 5px 16px; border-radius: 999px; background: #14b8a6; font-size: 18px; font-weight: 700; color: #042f2e; }
+  .tpl-stack.is-in .lt-name { animation-name: slideRight; }
+  .tpl-stack.is-in .lt-role { animation-name: slideRight; }
+
+  /* ================================================================
+     21) INSCREVA-SE (YOUTUBE) — canal + botão vermelho com sininho
+     Nome = nome do canal · Função = frase de apoio · Foto = logo do canal
+     ================================================================ */
+  .tpl-subscribe .lt-card { padding: 12px 14px 12px 12px; border-radius: 18px; gap: 18px; box-shadow: 0 12px 30px rgba(0,0,0,.28); }
+  .tpl-subscribe .lt-bg { border-radius: inherit; background: #fff; }
+  .tpl-subscribe .lt-avatar { width: 78px; height: 78px; }
+  .tpl-subscribe .lt-initials { font-size: 30px; }
+  .tpl-subscribe .lt-name { font-size: 30px; font-weight: 800; line-height: 1.15; color: #0f0f0f; }
+  .tpl-subscribe .lt-role { margin-top: 2px; font-size: 18px; font-weight: 500; color: #606060; }
+  .tpl-subscribe .lt-accent {
+    display: flex; position: relative; z-index: 1;
+    align-items: center; gap: 10px; margin-left: 14px; height: 58px; padding: 0 24px;
+    border-radius: 999px; background: #e00000; color: #fff;
+    font-size: 20px; font-weight: 800; letter-spacing: .06em; white-space: nowrap;
+    will-change: transform, opacity;
+  }
+  .tpl-subscribe .lt-accent::after { content: "INSCREVA-SE"; }
+  .tpl-subscribe .lt-accent i:first-child {
+    display: block; width: 24px; height: 24px; transform-origin: 50% 12%;
+    background: center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fff'%3E%3Cpath d='M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1Z'/%3E%3C/svg%3E");
+  }
+  .tpl-subscribe .lt-accent i:not(:first-child) { display: none; }
+  .tpl-subscribe.is-in .lt-accent { animation: popIn .55s .5s var(--ease-back) both; }
+  .tpl-subscribe.is-in .lt-accent i:first-child,
+  .tpl-subscribe.is-static .lt-accent i:first-child { animation: ring 1.4s 1.1s ease-in-out 3; }
+  @keyframes ring {
+    0%, 40%, 100% { transform: rotate(0); }
+    5% { transform: rotate(18deg); } 10% { transform: rotate(-16deg); } 15% { transform: rotate(12deg); }
+    20% { transform: rotate(-8deg); } 25% { transform: rotate(4deg); } 30% { transform: rotate(0); }
+  }
+
+  /* ================================================================
+     22) LOUVOR / MINISTRANTE — tons quentes, serifa e brilho suave
+     ================================================================ */
+  .tpl-worship .lt-card { padding: 16px 52px 16px 16px; border-radius: 999px 26px 26px 999px; gap: 22px; box-shadow: 0 16px 40px rgba(110, 35, 20, .32); }
+  .tpl-worship .lt-bg { border-radius: inherit; background: linear-gradient(110deg, #3b0d2e 0%, #8a2b3a 48%, #e0893a 100%); }
+  .tpl-worship .lt-avatar { width: 96px; height: 96px; box-shadow: 0 0 0 3px rgba(255, 236, 200, .9); }
+  .tpl-worship .lt-name { font-family: Georgia, "Times New Roman", serif; font-size: 40px; font-weight: 400; line-height: 1.15; color: #fff7ea; }
+  .tpl-worship .lt-role { margin-top: 5px; font-size: 17px; font-weight: 600; text-transform: uppercase; letter-spacing: .22em; color: #ffd9a0; }
+  .tpl-worship.is-in .lt-bg { animation: fadeIn .6s ease-out both; }
+
+  /* ================================================================
+     EDITOR (pré-visualização do Dock): contorno + alça de tamanho
+     --ui = 1 / escala da pré-visualização, para a moldura ter espessura legível
+     ================================================================ */
+  html.editor, html.editor body { user-select: none; }
+  html.editor .lt-scale {
+    cursor: move;
+    outline: calc(2px * var(--ui, 1) / var(--s, 1)) dashed rgba(91, 140, 255, .95);
+    outline-offset: calc(8px * var(--ui, 1) / var(--s, 1));
+  }
+  html.editor.dragging .lt-scale { outline-style: solid; }
+  html.editor .lt-handle {
+    display: block; position: absolute; z-index: 10;
+    right: calc(-19px * var(--ui, 1) / var(--s, 1));
+    top: calc(-19px * var(--ui, 1) / var(--s, 1));
+    width: calc(22px * var(--ui, 1) / var(--s, 1));
+    height: calc(22px * var(--ui, 1) / var(--s, 1));
+    border-radius: 50%; background: #5b8cff;
+    border: calc(2px * var(--ui, 1) / var(--s, 1)) solid #fff;
+    cursor: nesw-resize;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lt.is-in, .lt.is-in * { animation-duration: .01ms !important; animation-delay: 0s !important; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="lt" class="lt tpl-modern no-photo" aria-live="polite">
+   <div class="lt-scale">
+    <div class="lt-card">
+      <div class="lt-bg"></div>
+      <div class="lt-shine"></div>
+      <div class="lt-avatar"><img alt="" decoding="async"><span class="lt-initials"></span></div>
+      <div class="lt-text">
+        <div class="lt-name"></div>
+        <div class="lt-role"></div>
+      </div>
+      <div class="lt-accent"><i></i><i></i><i></i></div>
+    </div>
+    <div class="lt-handle" title="Arraste para redimensionar"></div>
+   </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const TEMPLATES = ['modern', 'clean', 'news', 'cyber', 'podcast', 'sports', 'minimal', 'split', 'elegant', 'soft', 'breaking', 'gradient',
+    'frosted', 'classic', 'outline', 'inline', 'verse', 'ribbon', 'spotlight', 'stack', 'subscribe', 'worship'];
+  const GEO_DEFAULT = { x: 110, y: 120, scale: 1 };
+  const OUT_FALLBACK_MS = 700;
+  const IMG_TIMEOUT_MS = 1200;
+  const NAME_PARTICLES = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'di', 'du', 'del', 'della', 'van', 'von', 'der', 'la', 'le']);
+
+  const params = new URLSearchParams(location.search);
+  // ?mode=editor → usado no modal do Dock: recebe dados via postMessage e não se conecta ao ar.
+  const EDITOR = params.get('mode') === 'editor';
+  let fitScale = 1;
+  let uiFactor = 1;            // ajuste extra de espessura das guias (zoom do estúdio)
+  const updateUi = () => document.documentElement.style.setProperty('--ui', String(uiFactor / fitScale));
+  if (EDITOR) document.documentElement.classList.add('editor');
+  if (params.get('bg') === 'none') document.documentElement.classList.add('nobg');
+  if (params.has('preview')) {
+    document.documentElement.classList.add('preview');
+    const stage = document.getElementById('stage');
+    const fit = () => {
+      fitScale = Math.min(innerWidth / 1920, innerHeight / 1080);
+      const x = (innerWidth - 1920 * fitScale) / 2;
+      const y = (innerHeight - 1080 * fitScale) / 2;
+      stage.style.transform = `translate(${x}px, ${y}px) scale(${fitScale})`;
+      updateUi();
+    };
+    addEventListener('resize', fit);
+    fit();
+  }
+
+  const $lt = document.getElementById('lt');
+  const $img = $lt.querySelector('.lt-avatar img');
+  const $initials = $lt.querySelector('.lt-initials');
+  const $name = $lt.querySelector('.lt-name');
+  const $role = $lt.querySelector('.lt-role');
+  const $scale = $lt.querySelector('.lt-scale');
+  const $card = $lt.querySelector('.lt-card');
+  let geo = { ...GEO_DEFAULT };
+
+  let phase = 'hidden';        // hidden | in | out
+  let seq = 0;                 // cancela operações obsoletas
+  let shownTakeId = null;
+  let localHideTimer = null;
+
+  /* ---------------- Utilidades ---------------- */
+  function initialsOf(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    const parts = words.filter((w) => !NAME_PARTICLES.has(w.toLowerCase()));
+    const list = parts.length ? parts : words;
+    if (!list.length) return '?';
+    const first = Array.from(list[0])[0] || '';
+    const last = list.length > 1 ? Array.from(list[list.length - 1])[0] : '';
+    return (first + last).toUpperCase();
+  }
+
+  function hueOf(text) {
+    let h = 0;
+    for (const ch of String(text)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    return h % 360;
+  }
+
+  function preloadImage(src) {
+    if (!src) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const img = new Image();
+      const timer = setTimeout(() => resolve(img.complete && img.naturalWidth > 0), IMG_TIMEOUT_MS);
+      img.onload = () => { clearTimeout(timer); (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(() => resolve(true)); };
+      img.onerror = () => { clearTimeout(timer); resolve(false); };
+      img.src = src;
+    });
+  }
+
+  function waitAnimation(name, fallbackMs) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        $lt.removeEventListener('animationend', onEnd);
+        clearTimeout(timer);
+        resolve();
+      };
+      const onEnd = (e) => { if (e.target === $lt && e.animationName === name) finish(); };
+      const timer = setTimeout(finish, fallbackMs);
+      $lt.addEventListener('animationend', onEnd);
+    });
+  }
+
+  /* ---------------- Posição e tamanho ---------------- */
+  const clamp = (v, min, max, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+  };
+  function normGeo(g = {}) {
+    return {
+      x: Math.round(clamp(g.x, -400, 1900, GEO_DEFAULT.x)),
+      y: Math.round(clamp(g.y, -200, 1060, GEO_DEFAULT.y)),
+      scale: Math.round(clamp(g.scale, 0.3, 3, GEO_DEFAULT.scale) * 100) / 100,
+    };
+  }
+  function applyGeometry(g) {
+    geo = normGeo(g);
+    $lt.style.left = `${geo.x}px`;
+    $lt.style.bottom = `${geo.y}px`;
+    $scale.style.setProperty('--s', String(geo.scale));
+  }
+
+  /* ---------------- Render ---------------- */
+  function render(data, hasPhoto) {
+    const template = TEMPLATES.includes(data.template) ? data.template : 'modern';
+    const name = String(data.name || '');
+    const role = String(data.role || '');
+
+    $name.textContent = name;
+    $role.textContent = role;
+    $initials.textContent = initialsOf(name);
+    $lt.style.setProperty('--h', hueOf(name));
+    applyGeometry(data);
+
+    if (hasPhoto) $img.src = data.photo;
+    else $img.removeAttribute('src');
+
+    $lt.className = [
+      'lt',
+      `tpl-${template}`,
+      hasPhoto ? '' : 'no-photo',
+      role ? '' : 'no-role',
+      name.length > (template === 'verse' ? 140 : 28) ? 'long' : '',
+    ].filter(Boolean).join(' ');
+  }
+
+  /* ---------------- Animações ---------------- */
+  async function playOut() {
+    if (phase === 'hidden') return;
+    phase = 'out';
+    $lt.classList.remove('is-in');
+    void $lt.offsetWidth; // reinicia a animação
+    $lt.classList.add('is-out');
+    await waitAnimation('ltOut', OUT_FALLBACK_MS);
+    $lt.classList.remove('is-out');
+    phase = 'hidden';
+  }
+
+  async function show(data) {
+    const token = ++seq;
+    clearTimeout(localHideTimer);
+
+    const [hasPhoto] = await Promise.all([
+      preloadImage(data.photo),
+      phase !== 'hidden' ? playOut() : null, // troca de participante: sai e entra
+    ]);
+    if (token !== seq) return;
+
+    render(data, hasPhoto);
+    void $lt.offsetWidth;
+    $lt.classList.add('is-in');
+    phase = 'in';
+
+    // Auto-hide local (redundância caso o servidor caia; o servidor também oculta).
+    const seconds = Number(data.autoHide) || 0;
+    if (seconds > 0 && !EDITOR) localHideTimer = setTimeout(() => hide(), seconds * 1000 + 1500);
+  }
+
+  function hide() {
+    ++seq;
+    clearTimeout(localHideTimer);
+    if (phase === 'in') playOut();
+  }
+
+  function applyState(s) {
+    if (!s) return;
+    if (s.visible && s.data) {
+      if (s.takeId !== shownTakeId) {
+        shownTakeId = s.takeId;
+        show(s.data);
+      }
+    } else {
+      shownTakeId = null;
+      hide();
+    }
+  }
+
+  /* ---------------- WebSocket com reconexão ---------------- */
+  let retries = 0;
+  function connect() {
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+    ws.addEventListener('open', () => { retries = 0; });
+    ws.addEventListener('message', (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch { return; }
+      if (msg.type === 'state') applyState(msg.state);
+    });
+    ws.addEventListener('close', () => {
+      const delay = Math.min(5000, 400 * 2 ** retries++);
+      setTimeout(connect, delay);
+    });
+    ws.addEventListener('error', () => ws.close());
+  }
+
+  /* ---------------- Modo editor (pré-visualização no Dock) ---------------- */
+  async function showStatic(data) {
+    const token = ++seq;
+    clearTimeout(localHideTimer);
+    const hasPhoto = await preloadImage(data.photo);
+    if (token !== seq) return;
+    render(data, hasPhoto);
+    $lt.classList.add('is-static');
+    phase = 'in';
+  }
+
+  function listenEditor() {
+    addEventListener('message', (event) => {
+      if (event.origin !== location.origin) return;
+      const msg = event.data;
+      if (msg?.type === 'lt-editor-options') {
+        snapOn = !!msg.snap;
+        if (Number(msg.ui) > 0) { uiFactor = Number(msg.ui); updateUi(); }
+        return;
+      }
+      if (!msg || msg.type !== 'lt-preview' || !msg.data) return;
+      const data = { ...msg.data, name: msg.data.name || 'Nome do Participante' };
+      if (msg.animate) {
+        ++seq;
+        $lt.className = 'lt';   // reinicia do zero, sem animação de saída
+        phase = 'hidden';
+        show(data);
+      } else {
+        showStatic(data);
+      }
+    });
+    parent.postMessage({ type: 'lt-preview-ready' }, location.origin);
+    enableDragResize();
+  }
+
+  /* Encaixe magnético: bordas da tela, área de ação (3,5%) e área de título (5%) do padrão de TV;
+     fora delas, grade de 10 px. Tamanho em passos de 5%. */
+  let snapOn = false;
+  const SNAP_DIST = 14;
+  const MAG_X = [0, 67, 96];   // distância da borda esquerda/direita
+  const MAG_Y = [0, 38, 54];   // distância da borda inferior/superior
+  function magnet(value, targets) {
+    let best = null;
+    for (const t of targets) if (Math.abs(value - t) <= SNAP_DIST && (best === null || Math.abs(value - t) < Math.abs(value - best))) best = t;
+    return best;
+  }
+  function snapGeometry(g, w, h) {
+    if (!snapOn) return g;
+    const W = w * g.scale, Hh = h * g.scale;
+    let x = magnet(g.x, MAG_X);
+    if (x === null) { const r = magnet(1920 - (g.x + W), MAG_X); x = r === null ? null : 1920 - r - W; }
+    let y = magnet(g.y, MAG_Y);
+    if (y === null) { const t = magnet(1080 - (g.y + Hh), MAG_Y); y = t === null ? null : 1080 - t - Hh; }
+    return { ...g, x: x ?? Math.round(g.x / 10) * 10, y: y ?? Math.round(g.y / 10) * 10 };
+  }
+
+  /** Arrastar o card move; puxar a alça azul (canto superior direito) muda o tamanho. */
+  function enableDragResize() {
+    let drag = null;
+    let raf = 0;
+    const post = () => {
+      raf = 0;
+      parent.postMessage({ type: 'lt-geometry', ...geo }, location.origin);
+    };
+
+    $scale.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      $scale.setPointerCapture(e.pointerId);
+      document.documentElement.classList.add('dragging');
+      drag = {
+        mode: e.target.closest('.lt-handle') ? 'resize' : 'move',
+        sx: e.clientX, sy: e.clientY,
+        start: { ...geo },
+        w: $card.offsetWidth || 1, h: $card.offsetHeight || 1,
+      };
+    });
+
+    $scale.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = (e.clientX - drag.sx) / fitScale;
+      const dy = (e.clientY - drag.sy) / fitScale;
+      if (drag.mode === 'move') {
+        applyGeometry(snapGeometry({ ...drag.start, x: drag.start.x + dx, y: drag.start.y - dy }, drag.w, drag.h));
+      } else {
+        // Canto superior direito: arrastar para a direita/para cima aumenta.
+        const ratio = 1 + (dx / (drag.w * drag.start.scale) - dy / (drag.h * drag.start.scale)) / 2;
+        let scale = drag.start.scale * ratio;
+        if (snapOn) scale = Math.round(scale * 20) / 20;
+        applyGeometry({ ...drag.start, scale });
+      }
+      if (!raf) raf = requestAnimationFrame(post);
+    });
+
+    const end = () => {
+      if (!drag) return;
+      drag = null;
+      document.documentElement.classList.remove('dragging');
+      post();
+    };
+    $scale.addEventListener('pointerup', end);
+    $scale.addEventListener('pointercancel', end);
+  }
+
+  if (EDITOR) listenEditor();
+  else connect();
+})();
+</script>
+</body>
+</html>

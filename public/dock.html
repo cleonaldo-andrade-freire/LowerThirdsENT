@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lower Thirds — Dock</title>
+<style>
+  :root {
+    --bg: #17181d;
+    --panel: #1f2027;
+    --panel-2: #262833;
+    --line: #33364a;
+    --text: #e7e9f0;
+    --muted: #9095a8;
+    --green: #1fae5b;
+    --green-h: #25c968;
+    --red: #d63a3a;
+    --red-h: #ec4848;
+    --blue: #2f6fe4;
+    --blue-h: #4281f5;
+    --focus: #5b8cff;
+    --radius: 7px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 13px/1.4 "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    padding: 8px 8px 64px;      /* espaço para o botão flutuante */
+    min-width: 240px;
+    user-select: none;
+  }
+  input, select, button { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .kbd { font-family: Consolas, monospace; background: #333748; padding: 0 3px; border-radius: 3px; color: var(--text); }
+
+  /* ---------- Barra superior ---------- */
+  .top { display: flex; align-items: center; gap: 7px; }
+  .conn { width: 8px; height: 8px; border-radius: 50%; background: #666; flex: 0 0 auto; }
+  .conn.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .conn.bad { background: var(--red); }
+  .air {
+    display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+    background: #2a2c36; color: var(--muted); border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .air::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .air.on { background: #4a1012; color: #ff5b5b; border-color: #8c2226; }
+  .now { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now b { color: var(--text); font-weight: 600; }
+
+  /* ---------- Botões ---------- */
+  .btn {
+    border: 0; border-radius: 6px; height: 30px; padding: 0 10px;
+    font-weight: 700; font-size: 11.5px; letter-spacing: .05em; color: #fff;
+    transition: background .12s, transform .06s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    flex: 0 0 auto;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-green { background: var(--green); } .btn-green:hover { background: var(--green-h); }
+  .btn-red { background: var(--red); } .btn-red:hover { background: var(--red-h); }
+  .btn-blue { background: var(--blue); } .btn-blue:hover { background: var(--blue-h); }
+  .btn-ghost { background: #34374a; color: #c9cce0; } .btn-ghost:hover { background: #41455c; color: #fff; }
+  .btn-icon { width: 30px; padding: 0; }
+  .btn-icon svg { width: 14px; height: 14px; }
+  .btn-hide { height: 26px; padding: 0 10px; }
+
+  /* ---------- Pré-visualização no modal ---------- */
+  .pv-box {
+    position: relative; aspect-ratio: 16 / 9; margin-bottom: 10px;
+    border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: #0d0e12;
+  }
+  .pv-tools {
+    position: absolute; right: 6px; top: 6px; z-index: 3;
+    display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; align-items: center;
+  }
+  .pv-btn, .pv-sel {
+    height: 24px; padding: 0 8px; border: 0; border-radius: 4px;
+    background: rgba(15, 16, 22, .85); color: var(--text);
+    font-size: 11px; font-weight: 700; letter-spacing: .03em;
+  }
+  .pv-btn:hover { background: var(--blue); }
+  .pv-btn.on { background: var(--blue); }
+  .pv-sel { padding: 0 4px; font-weight: 600; }
+  .pv-chk { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 4px; background: rgba(15,16,22,.85); font-size: 11px; font-weight: 600; cursor: pointer; }
+  .pv-chk input { margin: 0; }
+  .studio-only { display: none !important; }
+  .pv-viewport { position: absolute; inset: 0; }
+  .pv-canvas {
+    position: absolute; inset: 0; overflow: hidden;
+    background-color: #2b2f36;
+    background-image:
+      linear-gradient(45deg, #353a42 25%, transparent 25%, transparent 75%, #353a42 75%),
+      linear-gradient(45deg, #353a42 25%, transparent 25%, transparent 75%, #353a42 75%);
+    background-size: 16px 16px; background-position: 0 0, 8px 8px;
+  }
+  .pv-canvas[data-bg="black"] { background: #000; }
+  .pv-canvas[data-bg="gray"]  { background: #5b5f66; }
+  .pv-canvas[data-bg="green"] { background: #00b140; }
+  .pv-canvas[data-bg="image"] { background: #000 center / cover no-repeat; }
+  .pv-canvas[data-bg="camera"] { background: #000; }
+  .pv-canvas video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+  .pv-canvas[data-bg="camera"] video { display: block; }
+  .pv-canvas iframe { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; background: transparent; color-scheme: normal; }  /* mesmo esquema do overlay → iframe transparente */
+  .pv-guides { position: absolute; inset: 0; pointer-events: none; display: none; z-index: 2; }
+  .pv-box.guides .pv-guides { display: block; }
+  .pv-guides div { position: absolute; }
+  .g-action { inset: 3.5%; border: 1px dashed rgba(255, 214, 0, .7); }
+  .g-title  { inset: 5%;   border: 1px dashed rgba(0, 220, 255, .7); }
+  .g-h { left: 0; right: 0; top: 50%; border-top: 1px dashed rgba(255,255,255,.25); }
+  .g-v { top: 0; bottom: 0; left: 50%; border-left: 1px dashed rgba(255,255,255,.25); }
+  .g-third { left: 0; right: 0; top: 66.667%; border-top: 1px dotted rgba(255, 110, 110, .7); }
+  .g-legend {
+    left: 5%; top: 5%; margin: 6px; padding: 2px 6px; border-radius: 3px;
+    background: rgba(0,0,0,.55); color: #ddd; font-size: 10px; line-height: 1.5; white-space: nowrap;
+  }
+  .g-legend b { font-weight: 700; }
+  .pv-help { font-size: 10.5px; color: var(--muted); margin: 0 0 10px; }
+
+  /* ---------- Modo Estúdio: tela 1920x1080 em tamanho real ---------- */
+  .modal.studio { padding: 0; overflow: hidden; }
+  .modal.studio .sheet {
+    max-width: none; height: 100vh; margin: 0; border-radius: 0; border: 0;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .modal.studio .sheet-body {
+    display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px;
+    min-height: 0; padding: 10px;
+  }
+  .modal.studio .pv-box { aspect-ratio: auto; margin: 0; min-height: 0; display: flex; flex-direction: column; }
+  .modal.studio .studio-only { display: inline-flex !important; }
+  .modal.studio .pv-tools { position: static; padding: 6px; background: #121318; border-bottom: 1px solid var(--line); justify-content: flex-start; }
+  .modal.studio .pv-tools .spacer { flex: 1; }
+  .modal.studio .pv-viewport {
+    position: relative; inset: auto; flex: 1; min-height: 0;
+    overflow: auto; display: flex; background: #0a0b0e;
+  }
+  .modal.studio .pv-canvas {
+    position: relative; inset: auto; flex: 0 0 auto; margin: auto;
+    width: calc(1920px * var(--z)); height: calc(1080px * var(--z));
+    background-size: 40px 40px; background-position: 0 0, 20px 20px;
+    box-shadow: 0 0 0 1px #3a3f55;
+  }
+  .modal.studio .pv-canvas[data-bg="image"] { background-size: cover; background-position: center; }
+  .modal.studio .pv-canvas iframe { width: 1920px; height: 1080px; transform: scale(var(--z)); transform-origin: 0 0; }
+  .modal.studio .fields { overflow-y: auto; min-height: 0; padding-right: 2px; }
+  .zoom-info { font-size: 11px; color: var(--muted); padding: 0 6px; }
+  @media (max-width: 900px) {
+    .modal.studio .sheet-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+    .modal.studio .fields { max-height: 40vh; }
+  }
+
+  /* ---------- Lista de presets ---------- */
+  .section-title {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 10px 2px 6px; font-size: 10.5px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .07em;
+  }
+  .list { display: flex; flex-direction: column; gap: 4px; }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 10px; border: 1px dashed var(--line); border-radius: var(--radius); }
+  .preset {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 4px;
+    transition: border-color .15s, background .15s, opacity .15s;
+  }
+  .preset:hover { border-color: #474b63; }
+  .preset.live { border-color: #8c2226; background: #2a1a1d; }
+  .preset.dragging {
+    position: relative; z-index: 2;
+    border-color: var(--focus); background: #262a3a;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .5);
+  }
+  body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; }
+  .grip {
+    flex: 0 0 auto; width: 16px; height: 30px; margin-right: -3px;
+    display: grid; place-items: center;
+    color: #5d6280; cursor: grab; touch-action: none;
+  }
+  .grip:hover { color: #c3c8e0; }
+  .grip svg { width: 10px; height: 16px; pointer-events: none; }
+  .slot {
+    flex: 0 0 auto; min-width: 30px; height: 30px; padding: 0 3px;
+    display: grid; place-items: center; border-radius: 5px;
+    background: #2f3346; color: #cfd6ff; font-weight: 800; font-size: 13px;
+    cursor: grab; touch-action: none; font-variant-numeric: tabular-nums;
+  }
+  .preset.live .slot { background: #b3262c; color: #fff; }
+  .mini {
+    flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+    background: #3a3f57 center / cover no-repeat;
+    display: grid; place-items: center; font-size: 10.5px; font-weight: 700; color: #fff;
+  }
+  .info { flex: 1; min-width: 0; }
+  .info .n { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .info .r { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag {
+    display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    padding: 0 4px; border-radius: 3px; background: #33374b; color: #aab1cc; vertical-align: 1px;
+  }
+  .btn-del.confirm { background: var(--red); color: #fff; width: auto; padding: 0 7px; }
+
+  /* ---------- Botão flutuante ---------- */
+  .fab {
+    position: fixed; right: 12px; bottom: 12px; z-index: 5;
+    width: 44px; height: 44px; border-radius: 50%; border: 0;
+    background: var(--blue); color: #fff;
+    display: grid; place-items: center;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+    transition: background .12s, transform .12s;
+  }
+  .fab:hover { background: var(--blue-h); transform: scale(1.06); }
+  .fab svg { width: 20px; height: 20px; }
+
+  /* ---------- Modal ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 10px; overflow-y: auto;
+    background: rgba(8, 9, 12, .72);
+    opacity: 0; visibility: hidden; transition: opacity .15s, visibility .15s;
+  }
+  .modal.open { opacity: 1; visibility: visible; }
+  .sheet {
+    width: 100%; max-width: 720px; margin: auto 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .5);
+    transform: translateY(10px); transition: transform .15s;
+  }
+  .modal.open .sheet { transform: none; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .sheet-head h2 { margin: 0; font-size: 13px; font-weight: 700; }
+  .sheet-head .x { background: none; border: 0; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 4px; }
+  .sheet-head .x:hover { color: var(--text); }
+  .sheet-body { padding: 12px; }
+  .sheet-foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .sheet-foot .spacer { flex: 1; }
+
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 9px; }
+  .field label { font-size: 10.5px; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .field label .req { color: #ff7676; }
+  .input {
+    width: 100%; height: 32px; padding: 0 9px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px;
+    outline: none; transition: border-color .15s; user-select: text;
+  }
+  .input:focus { border-color: var(--focus); }
+  .input.invalid { border-color: var(--red); }
+
+  .media { display: flex; gap: 10px; align-items: stretch; }
+  .media .opts { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .media .opts .field:last-child { margin-bottom: 0; }
+  .drop {
+    position: relative; flex: 0 0 auto;
+    width: 96px; height: 96px;
+    border: 1.5px dashed #4a4e66; border-radius: 8px;
+    background: var(--panel-2) center / cover no-repeat;
+    display: grid; place-items: center; text-align: center;
+    color: var(--muted); font-size: 10.5px; line-height: 1.25; padding: 6px;
+    transition: border-color .15s, background-color .15s;
+    overflow: hidden; cursor: pointer;
+  }
+  .drop:hover, .drop.over { border-color: var(--focus); background-color: #2b2f42; }
+  .drop.has-photo { border-style: solid; border-color: var(--line); }
+  .drop.has-photo .hint { display: none; }
+  .drop .hint svg { display: block; margin: 0 auto 4px; opacity: .7; }
+  .drop .clear {
+    position: absolute; top: 4px; right: 4px;
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 0; background: rgba(0,0,0,.7); color: #fff; font-size: 13px; line-height: 20px; padding: 0;
+    display: none;
+  }
+  .drop.has-photo .clear { display: block; }
+  .drop.busy::after {
+    content: "Enviando…"; position: absolute; inset: 0; display: grid; place-items: center;
+    background: rgba(15, 16, 22, .75); color: var(--text); font-size: 11px;
+  }
+  .geo { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; align-items: end; margin-top: 9px; }
+  .geo .field { margin: 0; }
+  .geo .btn { height: 32px; }
+  .hint-line { font-size: 10.5px; color: var(--muted); margin-top: 10px; }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 66px; transform: translate(-50%, 16px);
+    background: #2c2f3d; border: 1px solid var(--line); color: var(--text);
+    padding: 7px 12px; border-radius: 6px; font-size: 12px; max-width: calc(100% - 24px);
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 30;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.error { border-color: #8c2226; background: #3a1d20; }
+
+  @media (max-width: 290px) {
+    .mini, .tag { display: none; }
+  }
+</style>
+</head>
+<body>
+  <!-- Barra superior: estado do ar + HIDE -->
+  <header class="top">
+    <span id="conn" class="conn" title="Conectando ao servidor…"></span>
+    <span id="air" class="air">OFF AIR</span>
+    <span id="now" class="now"></span>
+    <button type="button" id="btnHide" class="btn btn-red btn-hide" title="Ocultar (Ctrl+Shift+H)">HIDE</button>
+  </header>
+
+  <!-- Presets -->
+  <div class="section-title">
+    <span>Presets / Slots</span>
+    <span id="count">0</span>
+  </div>
+  <div id="list" class="list"></div>
+
+  <button type="button" id="fab" class="fab" title="Novo preset (Alt+N)" aria-label="Novo preset">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+
+  <!-- Modal criar/editar -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <form id="form" class="sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle" autocomplete="off" novalidate>
+      <div class="sheet-head">
+        <h2 id="modalTitle">Novo preset</h2>
+        <button type="button" class="x" data-close aria-label="Fechar">×</button>
+      </div>
+      <div class="sheet-body">
+        <div id="pvBox" class="pv-box">
+          <div class="pv-tools">
+            <label class="pv-chk studio-only" title="Tamanho da visualização">Zoom
+              <select id="pvZoom" class="pv-sel">
+                <option value="1">100% (real)</option>
+                <option value="0.75">75%</option>
+                <option value="0.5">50%</option>
+                <option value="0.33">33%</option>
+                <option value="fit">Ajustar à tela</option>
+              </select>
+            </label>
+            <label class="pv-chk studio-only" title="Fundo para simular a transmissão">Fundo
+              <select id="pvBg" class="pv-sel">
+                <option value="checker">Xadrez (transparente)</option>
+                <option value="black">Preto</option>
+                <option value="gray">Cinza</option>
+                <option value="green">Verde (chroma)</option>
+                <option value="image">Imagem / print do culto…</option>
+                <option value="camera">Câmera ao vivo</option>
+              </select>
+            </label>
+            <button type="button" id="pvBgPick" class="pv-btn studio-only" title="Escolher outra imagem de fundo" hidden>📁 Imagem</button>
+            <label class="pv-chk studio-only" title="Áreas seguras de TV e linhas de referência"><input type="checkbox" id="pvGuidesChk"> Guias</label>
+            <label class="pv-chk studio-only" title="Encaixa nas áreas seguras e em grade de 10 px"><input type="checkbox" id="pvSnapChk"> Ímã</label>
+            <span class="spacer studio-only"></span>
+            <span id="zoomInfo" class="zoom-info studio-only"></span>
+            <button type="button" id="pvReplay" class="pv-btn" title="Ver a animação de entrada">▶ Animar</button>
+            <button type="button" id="pvStudio" class="pv-btn" title="Abrir a tela 1920×1080 em tamanho real">⛶ Tamanho real</button>
+          </div>
+          <div id="pvViewport" class="pv-viewport">
+            <div id="pvCanvas" class="pv-canvas" data-bg="checker">
+              <video id="pvCam" muted playsinline></video>
+              <div class="pv-guides">
+                <div class="g-action"></div><div class="g-title"></div>
+                <div class="g-h"></div><div class="g-v"></div><div class="g-third"></div>
+                <div class="g-legend"><b style="color:#ffd600">- - -</b> área de ação · <b style="color:#00dcff">- - -</b> área de título · <b style="color:#ff6e6e">···</b> linha do terço inferior</div>
+              </div>
+            </div>
+          </div>
+          <input id="pvBgFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        </div>
+        <div class="fields">
+        <div class="pv-help">Arraste o card para mover · puxe a bolinha azul para aumentar/diminuir · <b>⛶ Tamanho real</b> abre a tela 1920×1080 em 100%</div>
+        <div class="field">
+          <label for="name">Nome <span class="req">*</span></label>
+          <input id="name" class="input" maxlength="220" placeholder="Ex.: Carlos Andrade" required>
+        </div>
+        <div class="field">
+          <label for="role">Função / Cargo</label>
+          <input id="role" class="input" maxlength="120" placeholder="Ex.: Diretor de Tecnologia">
+        </div>
+        <div class="media">
+          <div id="drop" class="drop" tabindex="0" role="button" aria-label="Foto: clique, arraste ou cole com Ctrl+V">
+            <div class="hint">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="m21 17-5-5-7 7"/></svg>
+              Clique, arraste<br>ou <span class="kbd">Ctrl+V</span>
+            </div>
+            <button type="button" id="clearPhoto" class="clear" title="Remover foto">×</button>
+          </div>
+          <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+          <div class="opts">
+            <div class="field">
+              <label for="template">Modelo</label>
+              <select id="template" class="input">
+                <optgroup label="Igreja">
+                  <option value="worship">Louvor / Ministrante</option>
+                  <option value="verse">Versículo (nome = texto, função = referência)</option>
+                  <option value="elegant">Elegante</option>
+                  <option value="ribbon">Ribbon (casamentos, batismos, cerimônias)</option>
+                  <option value="spotlight">Spotlight (testemunho / entrevista)</option>
+                  <option value="classic">TV Clássica</option>
+                </optgroup>
+                <optgroup label="YouTube / Redes">
+                  <option value="subscribe">Inscreva-se (nome = canal)</option>
+                  <option value="gradient">Gradient Social</option>
+                  <option value="podcast">Podcast</option>
+                  <option value="stack">Tags Empilhadas</option>
+                  <option value="soft">Soft Card</option>
+                  <option value="split">Split Block</option>
+                  <option value="inline">Linha Única (webinar)</option>
+                </optgroup>
+                <optgroup label="Corporativo / Neutro">
+                  <option value="modern">Modern Glass</option>
+                  <option value="clean">Clean Corporate</option>
+                  <option value="frosted">Frosted Light</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="outline">Outline (molduras)</option>
+                </optgroup>
+                <optgroup label="Jornalismo / Outros">
+                  <option value="news">Broadcast News</option>
+                  <option value="breaking">Plantão / Ao Vivo</option>
+                  <option value="sports">Esportes</option>
+                  <option value="cyber">Cybertech</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="field">
+              <label for="autoHide">Auto-Hide (s) · 0 = off</label>
+              <input id="autoHide" class="input" type="number" min="0" max="3600" step="1" value="0">
+            </div>
+          </div>
+        </div>
+        <div class="geo">
+          <div class="field">
+            <label for="posX">Posição X</label>
+            <input id="posX" class="input" type="number" min="-400" max="1900" step="1" value="110">
+          </div>
+          <div class="field">
+            <label for="posY">Posição Y</label>
+            <input id="posY" class="input" type="number" min="-200" max="1060" step="1" value="120">
+          </div>
+          <div class="field">
+            <label for="size">Tamanho %</label>
+            <input id="size" class="input" type="number" min="30" max="300" step="5" value="100">
+          </div>
+          <button type="button" id="geoReset" class="btn btn-ghost" title="Voltar à posição e tamanho padrão">↺ Padrão</button>
+        </div>
+        <div class="hint-line"><span class="kbd">Enter</span> salva · <span class="kbd">Ctrl+Enter</span> salva e põe no ar · <span class="kbd">Esc</span> fecha</div>
+        </div>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <span class="spacer"></span>
+        <button type="button" id="btnSaveTake" class="btn btn-green">Salvar e TAKE</button>
+        <button type="submit" id="btnSave" class="btn btn-blue">Salvar</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const TEMPLATES = ['modern', 'clean', 'news', 'cyber', 'podcast', 'sports', 'minimal', 'split', 'elegant', 'soft', 'breaking', 'gradient',
+    'frosted', 'classic', 'outline', 'inline', 'verse', 'ribbon', 'spotlight', 'stack', 'subscribe', 'worship'];
+  const TEMPLATE_LABEL = {
+    modern: 'Glass', clean: 'Clean', news: 'News', cyber: 'Cyber', podcast: 'Podcast', sports: 'Sports',
+    minimal: 'Minimal', split: 'Split', elegant: 'Elegante', soft: 'Soft', breaking: 'Ao Vivo', gradient: 'Gradient',
+    frosted: 'Frosted', classic: 'Clássico', outline: 'Outline', inline: 'Inline', verse: 'Versículo',
+    ribbon: 'Ribbon', spotlight: 'Spotlight', stack: 'Tags', subscribe: 'Inscreva-se', worship: 'Louvor',
+  };
+  const GEO_DEFAULT = { x: 110, y: 120, scale: 1 };
+  const MAX_IMAGE_SIDE = 640;              // fotos reduzidas antes do upload (performance no OBS)
+  const MAX_FILE_BYTES = 15 * 1024 * 1024;
+
+  const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  const GRIP_ICON = '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.6"/><circle cx="7.5" cy="2.5" r="1.6"/><circle cx="2.5" cy="8" r="1.6"/><circle cx="7.5" cy="8" r="1.6"/><circle cx="2.5" cy="13.5" r="1.6"/><circle cx="7.5" cy="13.5" r="1.6"/></svg>';
+  const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    conn: $('conn'), air: $('air'), now: $('now'), hide: $('btnHide'),
+    pvBox: $('pvBox'), pvReplay: $('pvReplay'), pvStudio: $('pvStudio'),
+    pvViewport: $('pvViewport'), pvCanvas: $('pvCanvas'), pvCam: $('pvCam'),
+    pvZoom: $('pvZoom'), pvBg: $('pvBg'), pvBgPick: $('pvBgPick'), pvBgFile: $('pvBgFile'),
+    pvGuidesChk: $('pvGuidesChk'), pvSnapChk: $('pvSnapChk'), zoomInfo: $('zoomInfo'),
+    list: $('list'), count: $('count'), fab: $('fab'),
+    modal: $('modal'), form: $('form'), title: $('modalTitle'),
+    name: $('name'), role: $('role'), template: $('template'), autoHide: $('autoHide'),
+    posX: $('posX'), posY: $('posY'), size: $('size'), geoReset: $('geoReset'),
+    drop: $('drop'), file: $('file'), clearPhoto: $('clearPhoto'),
+    save: $('btnSave'), saveTake: $('btnSaveTake'),
+    toast: $('toast'),
+  };
+
+  let presets = [];
+  let liveState = null;
+  let clockOffset = 0;
+  let countdownTimer = null;
+  let photo = '';
+  let editingId = null;      // null = criando; string = editando
+  let busy = false;
+
+  /* ================= Utilidades ================= */
+  let toastTimer;
+  function toast(message, isError = false) {
+    els.toast.textContent = message;
+    els.toast.classList.toggle('error', isError);
+    els.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => els.toast.classList.remove('show'), isError ? 3500 : 1800);
+  }
+
+  async function api(path, { method = 'POST', body } = {}) {
+    const res = await fetch(path, {
+      method,
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    let json = {};
+    try { json = await res.json(); } catch { /* sem corpo */ }
+    if (!res.ok || json.ok === false) throw new Error(json.error || `Erro HTTP ${res.status}`);
+    return json;
+  }
+
+  const run = (fn) => async (...args) => {
+    try { await fn(...args); } catch (err) { toast(err.message || 'Falha na operação', true); }
+  };
+
+  function initialsOf(name) {
+    const skip = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    const parts = words.filter((w) => !skip.has(w.toLowerCase()));
+    const list = parts.length ? parts : words;
+    if (!list.length) return '?';
+    return ((Array.from(list[0])[0] || '') + (list.length > 1 ? Array.from(list.at(-1))[0] : '')).toUpperCase();
+  }
+
+  const cssUrl = (src) => `url("${String(src).replace(/["\\\n\r]/g, (c) => encodeURIComponent(c))}")`;
+  const sameEntry = (a, b) => a && b && a.name === b.name && a.role === b.role && a.photo === b.photo && a.template === b.template;
+
+  /* ================= Modal criar / editar ================= */
+  const isModalOpen = () => els.modal.classList.contains('open');
+
+  function openModal(preset = null) {
+    editingId = preset?.id ?? null;
+    const slot = preset ? presets.findIndex((p) => p.id === preset.id) + 1 : 0;
+    els.title.textContent = preset ? `Editar slot #${slot}` : 'Novo preset';
+    els.name.value = preset?.name ?? '';
+    els.role.value = preset?.role ?? '';
+    els.template.value = TEMPLATES.includes(preset?.template) ? preset.template : 'modern';
+    els.autoHide.value = Number(preset?.autoHide) || 0;
+    setGeoInputs(preset ?? GEO_DEFAULT);
+    els.name.classList.remove('invalid');
+    setPhoto(preset?.photo ?? '');
+
+    els.modal.classList.add('open');
+    els.modal.setAttribute('aria-hidden', 'false');
+    ensurePreviewFrame();
+    applyStudioPrefs();
+    sendPreview(true);
+    setTimeout(() => els.name.focus(), 30);
+  }
+
+  function closeModal() {
+    stopCamera();
+    els.modal.classList.remove('open');
+    els.modal.setAttribute('aria-hidden', 'true');
+    editingId = null;
+  }
+
+  function readForm() {
+    return {
+      name: els.name.value.trim(),
+      role: els.role.value.trim(),
+      photo,
+      template: els.template.value,
+      autoHide: Math.max(0, Number(els.autoHide.value) || 0),
+      ...readGeo(),
+    };
+  }
+
+  const numOr = (value, fallback) => (value === '' || !Number.isFinite(Number(value)) ? fallback : Number(value));
+  function readGeo() {
+    return {
+      x: Math.round(numOr(els.posX.value, GEO_DEFAULT.x)),
+      y: Math.round(numOr(els.posY.value, GEO_DEFAULT.y)),
+      scale: Math.min(3, Math.max(0.3, numOr(els.size.value, 100) / 100)),
+    };
+  }
+  function setGeoInputs(g) {
+    els.posX.value = Math.round(numOr(g.x, GEO_DEFAULT.x));
+    els.posY.value = Math.round(numOr(g.y, GEO_DEFAULT.y));
+    els.size.value = Math.round(numOr(g.scale, GEO_DEFAULT.scale) * 100);
+  }
+
+  function validate() {
+    const ok = els.name.value.trim().length > 0;
+    els.name.classList.toggle('invalid', !ok);
+    if (!ok) { els.name.focus(); toast('Informe o nome do participante.', true); }
+    return ok;
+  }
+
+  async function submit({ takeAfter = false } = {}) {
+    if (busy || !validate()) return;
+    busy = true;
+    els.save.disabled = els.saveTake.disabled = true;
+    try {
+      const data = readForm();
+      const { slot } = editingId
+        ? await api(`/api/presets/${encodeURIComponent(editingId)}`, { method: 'PUT', body: data })
+        : await api('/api/presets/add', { body: data });
+      if (takeAfter) await api(`/api/take/slot/${slot}`);
+      closeModal();
+      toast(takeAfter ? `Slot #${slot} salvo e no ar.` : `Slot #${slot} salvo.`);
+    } finally {
+      busy = false;
+      els.save.disabled = els.saveTake.disabled = false;
+    }
+  }
+
+  els.form.addEventListener('submit', (e) => { e.preventDefault(); run(submit)(); });
+  els.saveTake.addEventListener('click', () => run(submit)({ takeAfter: true }));
+  els.modal.addEventListener('click', (e) => {
+    if (e.target === els.modal || e.target.closest('[data-close]')) closeModal();
+  });
+  els.form.addEventListener('input', () => els.name.classList.remove('invalid'));
+  els.fab.addEventListener('click', () => openModal());
+
+  /* ================= Foto: arquivo, drag & drop, Ctrl+V ================= */
+  function setPhoto(src) {
+    photo = src || '';
+    els.drop.style.backgroundImage = photo ? cssUrl(photo) : '';
+    els.drop.classList.toggle('has-photo', !!photo);
+    if (isModalOpen()) sendPreview(false);
+  }
+
+  function readAsDataURL(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /** Reduz a imagem mantendo a proporção. GIF é mantido para preservar a animação. */
+  async function prepareImage(file, maxSide = MAX_IMAGE_SIDE) {
+    if (file.type === 'image/gif') return readAsDataURL(file);
+    const bitmap = await createImageBitmap(file).catch(() => null);
+    if (!bitmap) throw new Error('Imagem inválida ou corrompida.');
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size < 600 * 1024 && file.type !== 'image/bmp') {
+      bitmap.close?.();
+      return readAsDataURL(file);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const webp = canvas.toDataURL('image/webp', 0.9);
+    return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png');
+  }
+
+  async function handleImage(file) {
+    if (!file || !file.type.startsWith('image/')) throw new Error('O arquivo não é uma imagem.');
+    if (file.size > MAX_FILE_BYTES) throw new Error('Imagem muito grande (máx. 15 MB).');
+    els.drop.classList.add('busy');
+    try {
+      const dataUrl = await prepareImage(file);
+      const { path } = await api('/api/upload', { body: { image: dataUrl } });
+      setPhoto(path);
+    } finally {
+      els.drop.classList.remove('busy');
+    }
+  }
+
+  els.drop.addEventListener('click', (e) => { if (e.target !== els.clearPhoto) els.file.click(); });
+  els.drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.file.click(); } });
+  els.clearPhoto.addEventListener('click', (e) => { e.stopPropagation(); setPhoto(''); });
+  els.file.addEventListener('change', run(async () => {
+    const [file] = els.file.files;
+    els.file.value = '';
+    if (file) await handleImage(file);
+  }));
+
+  // Soltar arquivo fora da área não deve abrir a imagem no lugar do Dock.
+  ['dragover', 'drop'].forEach((type) => window.addEventListener(type, (e) => e.preventDefault()));
+  els.drop.addEventListener('dragenter', (e) => { e.preventDefault(); els.drop.classList.add('over'); });
+  els.drop.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; els.drop.classList.add('over'); });
+  els.drop.addEventListener('dragleave', () => els.drop.classList.remove('over'));
+  els.drop.addEventListener('drop', run(async (e) => {
+    e.preventDefault();
+    els.drop.classList.remove('over');
+    const file = [...(e.dataTransfer.files || [])].find((f) => f.type.startsWith('image/'));
+    if (file) return handleImage(file);
+    const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split('\n')[0].trim();
+    if (/^https?:\/\//i.test(url)) { setPhoto(url); return; }
+    throw new Error('Solte um arquivo de imagem.');
+  }));
+
+  // Ctrl+V: com o modal aberto troca a foto; fechado, abre "Novo preset" já com a foto.
+  document.addEventListener('paste', run(async (e) => {
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+    if (!item) return;
+    e.preventDefault();
+    const file = item.getAsFile();
+    if (!isModalOpen()) openModal();
+    await handleImage(file);
+  }));
+
+  /* ================= Ações rápidas ================= */
+  const doHide = run(() => api('/api/hide'));
+  const doSlot = run(async (slot) => {
+    if (slot < 1 || slot > presets.length) throw new Error(`Slot #${slot} vazio.`);
+    await api(`/api/take/slot/${slot}`);
+  });
+  const doDelete = run(async (id) => {
+    await api(`/api/presets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    toast('Preset excluído.');
+  });
+  const saveOrder = run(async (next) => {
+    presets = next;
+    renderPresets();
+    await api('/api/presets', { body: { presets: next } });
+    toast('Ordem dos slots salva.');
+  });
+
+  els.hide.addEventListener('click', doHide);
+
+  document.addEventListener('keydown', (e) => {
+    if (isModalOpen()) {
+      if (e.key === 'Escape') { e.preventDefault(); if (isStudio()) setStudio(false); else closeModal(); }
+      else if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); run(submit)({ takeAfter: true }); }
+      return;
+    }
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'h') { e.preventDefault(); doHide(); }
+    else if (e.altKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); doSlot(Number(e.key)); }
+    else if (e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openModal(); }
+  });
+
+  /* ================= Lista de presets ================= */
+  function iconButton(className, html, title) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `btn btn-icon ${className}`;
+    b.innerHTML = html;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    return b;
+  }
+
+  function presetNode(preset, index) {
+    const slot = index + 1;
+    const row = document.createElement('div');
+    row.className = 'preset';
+    row.dataset.index = index;
+    if (liveState?.visible && sameEntry(preset, liveState.data)) row.classList.add('live');
+
+    const badge = document.createElement('div');
+    badge.className = 'slot';
+    badge.textContent = `#${slot}`;
+    badge.title = `Arraste para mudar a ordem · Macro Deck: POST /api/take/slot/${slot}`;
+
+    const grip = document.createElement('div');
+    grip.className = 'grip';
+    grip.title = 'Arraste para mudar a ordem';
+    grip.innerHTML = GRIP_ICON;
+    grip.addEventListener('pointerdown', (e) => startReorder(e, row));
+    badge.addEventListener('pointerdown', (e) => startReorder(e, row));
+
+    const mini = document.createElement('div');
+    mini.className = 'mini';
+    if (preset.photo) mini.style.backgroundImage = cssUrl(preset.photo);
+    else mini.textContent = initialsOf(preset.name);
+
+    const info = document.createElement('div');
+    info.className = 'info';
+    const n = document.createElement('div');
+    n.className = 'n';
+    n.textContent = preset.name;
+    const r = document.createElement('div');
+    r.className = 'r';
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = TEMPLATE_LABEL[preset.template] || preset.template;
+    r.append(tag, ' ', [preset.role, preset.autoHide ? `⏱ ${preset.autoHide}s` : ''].filter(Boolean).join(' · ') || '—');
+    info.append(n, r);
+
+    const take = document.createElement('button');
+    take.type = 'button';
+    take.className = 'btn btn-green';
+    take.textContent = 'TAKE';
+    take.title = `Exibir slot #${slot}${slot <= 9 ? ` (Alt+${slot})` : ''}`;
+    take.addEventListener('click', () => doSlot(slot));
+
+    const edit = iconButton('btn-ghost', ICON_EDIT, `Editar slot #${slot}`);
+    edit.addEventListener('click', () => openModal(preset));
+
+    const del = iconButton('btn-ghost btn-del', ICON_DEL, 'Excluir (clique de novo para confirmar)');
+    let armed;
+    del.addEventListener('click', () => {
+      if (del.classList.contains('confirm')) { clearTimeout(armed); doDelete(preset.id); return; }
+      del.classList.add('confirm');
+      del.textContent = 'Excluir?';
+      armed = setTimeout(() => { del.classList.remove('confirm'); del.innerHTML = ICON_DEL; }, 2500);
+    });
+
+    row.append(grip, badge, mini, info, take, edit, del);
+    return row;
+  }
+
+  /* ---------- Reordenar com o mouse (Pointer Events — funciona no dock do OBS) ---------- */
+  let reorder = null;
+  let pendingPresets = null;   // atualização recebida durante o arraste
+
+  function startReorder(e, row) {
+    if (e.button !== 0 || reorder) return;
+    e.preventDefault();
+    reorder = { row, startY: e.clientY, moved: false };
+    // Escuta na janela: mover a linha no DOM cancelaria um "pointer capture" na própria linha.
+    window.addEventListener('pointermove', moveReorder);
+    window.addEventListener('pointerup', endReorder);
+    window.addEventListener('pointercancel', endReorder);
+  }
+
+  function moveReorder(e) {
+    if (!reorder) return;
+    const { row } = reorder;
+    if (!reorder.moved) {
+      if (Math.abs(e.clientY - reorder.startY) < 4) return;   // evita arrastar sem querer
+      reorder.moved = true;
+      row.classList.add('dragging');
+      document.body.classList.add('reordering');
+    }
+    const others = [...els.list.querySelectorAll('.preset')].filter((r) => r !== row);
+    const before = others.find((r) => {
+      const rect = r.getBoundingClientRect();
+      return e.clientY < rect.top + rect.height / 2;
+    });
+    if (before) { if (row.nextElementSibling !== before) els.list.insertBefore(row, before); }
+    else if (els.list.lastElementChild !== row) els.list.append(row);
+    renumberRows();
+
+    // Rolagem automática perto das bordas
+    if (e.clientY > innerHeight - 40) scrollBy(0, 12);
+    else if (e.clientY < 40) scrollBy(0, -12);
+  }
+
+  function endReorder() {
+    if (!reorder) return;
+    const { row, moved } = reorder;
+    reorder = null;
+    window.removeEventListener('pointermove', moveReorder);
+    window.removeEventListener('pointerup', endReorder);
+    window.removeEventListener('pointercancel', endReorder);
+    row.classList.remove('dragging');
+    document.body.classList.remove('reordering');
+
+    if (pendingPresets) {             // chegou mudança de outro lugar: ela prevalece
+      presets = pendingPresets;
+      pendingPresets = null;
+      renderPresets();
+      return;
+    }
+    if (!moved) return;
+    const next = [...els.list.querySelectorAll('.preset')].map((n) => presets[Number(n.dataset.index)]);
+    const changed = next.some((p, i) => p !== presets[i]);
+    if (changed) saveOrder(next);
+    else renderPresets();
+  }
+
+  /** Atualiza os números #N enquanto arrasta, para mostrar a posição final. */
+  function renumberRows() {
+    els.list.querySelectorAll('.preset').forEach((node, i) => {
+      node.querySelector('.slot').textContent = `#${i + 1}`;
+    });
+  }
+
+  function renderPresets() {
+    els.count.textContent = `${presets.length} slot${presets.length === 1 ? '' : 's'}`;
+    if (!presets.length) {
+      els.list.innerHTML = '<div class="empty">Nenhum preset ainda.<br>Clique no <b>+</b> para criar.</div>';
+      return;
+    }
+    els.list.replaceChildren(...presets.map(presetNode));
+  }
+
+  /* ================= Estado do ar ================= */
+  function renderState() {
+    const s = liveState;
+    clearInterval(countdownTimer);
+    if (!s) return;
+
+    const on = !!s.visible;
+    els.air.classList.toggle('on', on);
+    const update = () => {
+      let label = on ? 'ON AIR' : 'OFF AIR';
+      if (on && s.hideAt) label += ` · ${Math.max(0, Math.ceil((s.hideAt - (Date.now() + clockOffset)) / 1000))}s`;
+      els.air.textContent = label;
+    };
+    update();
+    if (on && s.hideAt) countdownTimer = setInterval(update, 250);
+
+    els.now.replaceChildren();
+    if (on && s.data) {
+      const b = document.createElement('b');
+      b.textContent = s.data.name;
+      els.now.append(b);
+      els.now.title = [s.data.name, s.data.role].filter(Boolean).join(' — ');
+    } else {
+      els.now.title = '';
+    }
+
+    for (const node of els.list.querySelectorAll('.preset')) {
+      node.classList.toggle('live', on && sameEntry(presets[Number(node.dataset.index)], s.data));
+    }
+  }
+
+  /* ================= Pré-visualização no modal ================= */
+  // Overlay em modo editor: mostra os dados do formulário sem ir ao ar.
+  // Criado na primeira abertura do modal e reaproveitado depois.
+  let pvFrame = null;
+  let pvReady = false;
+  let pvTimer = null;
+
+  function ensurePreviewFrame() {
+    if (pvFrame) return;
+    pvFrame = document.createElement('iframe');
+    pvFrame.src = '/overlay.html?preview=1&mode=editor&bg=none';
+    pvFrame.title = 'Pré-visualização do lower third';
+    pvFrame.tabIndex = -1;
+    els.pvCanvas.insertBefore(pvFrame, els.pvCanvas.querySelector('.pv-guides'));
+  }
+
+  function sendPreview(animate = false) {
+    clearTimeout(pvTimer);
+    if (!pvReady || !pvFrame?.contentWindow) return;
+    pvFrame.contentWindow.postMessage({ type: 'lt-preview', data: readForm(), animate }, location.origin);
+  }
+  const queuePreview = () => { clearTimeout(pvTimer); pvTimer = setTimeout(() => sendPreview(false), 120); };
+
+  addEventListener('message', (event) => {
+    if (event.origin !== location.origin) return;
+    const msg = event.data;
+    if (msg?.type === 'lt-preview-ready') {
+      pvReady = true;
+      sendEditorOptions();
+      if (isModalOpen()) sendPreview(true);
+    } else if (msg?.type === 'lt-geometry' && isModalOpen()) {
+      setGeoInputs(msg);   // arrastar/redimensionar na pré-visualização atualiza os campos
+    }
+  });
+
+  els.posX.addEventListener('input', queuePreview);
+  els.posY.addEventListener('input', queuePreview);
+  els.size.addEventListener('input', queuePreview);
+  els.geoReset.addEventListener('click', () => { setGeoInputs(GEO_DEFAULT); sendPreview(false); });
+
+  els.pvReplay.addEventListener('click', () => sendPreview(true));
+  els.name.addEventListener('input', queuePreview);
+  els.role.addEventListener('input', queuePreview);
+  els.autoHide.addEventListener('input', queuePreview);
+  els.template.addEventListener('change', () => sendPreview(true));   // trocar o modelo mostra a entrada dele
+
+
+  /* ================= Modo Estúdio (tamanho real) ================= */
+  const STUDIO_KEY = 'lt-studio';
+  const prefs = (() => {
+    const base = { studio: false, zoom: '1', bg: 'checker', bgImage: '', guides: true, snap: true };
+    try { return { ...base, ...JSON.parse(localStorage.getItem(STUDIO_KEY) || '{}') }; } catch { return base; }
+  })();
+  const savePrefs = () => { try { localStorage.setItem(STUDIO_KEY, JSON.stringify(prefs)); } catch { /* sem storage */ } };
+  const isStudio = () => els.modal.classList.contains('studio');
+  let zoomValue = 1;
+
+  function sendEditorOptions() {
+    if (!pvReady || !pvFrame?.contentWindow) return;
+    // Em estúdio o iframe tem 1920 px reais; o fator "ui" mantém moldura e alça visíveis em qualquer zoom.
+    const ui = isStudio() ? 1 / zoomValue : 1;
+    pvFrame.contentWindow.postMessage({ type: 'lt-editor-options', snap: prefs.snap, ui }, location.origin);
+  }
+
+  function applyZoom() {
+    if (!isStudio()) { zoomValue = 1; sendEditorOptions(); return; }
+    let z = Number(prefs.zoom);
+    if (prefs.zoom === 'fit' || !(z > 0)) {
+      const w = els.pvViewport.clientWidth - 24;
+      const h = els.pvViewport.clientHeight - 24;
+      z = Math.max(0.1, Math.min(w / 1920, h / 1080));
+    }
+    zoomValue = z;
+    els.pvCanvas.style.setProperty('--z', String(z));
+    els.zoomInfo.textContent = `1920×1080 · ${Math.round(z * 100)}%`;
+    sendEditorOptions();
+  }
+
+  function setStudio(on) {
+    prefs.studio = on;
+    savePrefs();
+    els.modal.classList.toggle('studio', on);
+    els.pvStudio.textContent = on ? '✕ Sair do tamanho real' : '⛶ Tamanho real';
+    els.pvStudio.classList.toggle('on', on);
+    requestAnimationFrame(applyZoom);
+    if (!on && prefs.bg === 'camera') stopCamera();
+    else if (on) applyBackground();
+  }
+
+  /* ---------- Fundo de simulação ---------- */
+  let camStream = null;
+  function stopCamera() {
+    if (camStream) camStream.getTracks().forEach((t) => t.stop());
+    camStream = null;
+    els.pvCam.srcObject = null;
+  }
+  async function startCamera() {
+    if (camStream) return;
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Câmera não disponível neste navegador.');
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      els.pvCam.srcObject = camStream;
+      await els.pvCam.play().catch(() => {});
+    } catch (err) {
+      camStream = null;
+      throw new Error('Não foi possível abrir a câmera (ela pode estar em uso pelo OBS).');
+    }
+  }
+
+  const applyBackground = run(async () => {
+    const bg = isStudio() ? prefs.bg : 'checker';
+    els.pvBg.value = prefs.bg;
+    els.pvBgPick.hidden = prefs.bg !== 'image';
+    els.pvCanvas.dataset.bg = bg;
+    els.pvCanvas.style.backgroundImage = bg === 'image' && prefs.bgImage ? cssUrl(prefs.bgImage) : '';
+    if (bg === 'camera') await startCamera(); else stopCamera();
+  });
+
+  function applyStudioPrefs() {
+    els.pvZoom.value = prefs.zoom;
+    els.pvGuidesChk.checked = prefs.guides;
+    els.pvSnapChk.checked = prefs.snap;
+    els.pvBox.classList.toggle('guides', prefs.guides);
+    setStudio(prefs.studio);
+    applyBackground();
+  }
+
+  els.pvStudio.addEventListener('click', () => setStudio(!isStudio()));
+  els.pvZoom.addEventListener('change', () => { prefs.zoom = els.pvZoom.value; savePrefs(); applyZoom(); });
+  els.pvGuidesChk.addEventListener('change', () => { prefs.guides = els.pvGuidesChk.checked; savePrefs(); els.pvBox.classList.toggle('guides', prefs.guides); });
+  els.pvSnapChk.addEventListener('change', () => { prefs.snap = els.pvSnapChk.checked; savePrefs(); sendEditorOptions(); });
+  els.pvBg.addEventListener('change', () => {
+    prefs.bg = els.pvBg.value; savePrefs();
+    if (prefs.bg === 'image' && !prefs.bgImage) els.pvBgFile.click();
+    applyBackground();
+  });
+  els.pvBgPick.addEventListener('click', () => els.pvBgFile.click());
+  els.pvBgFile.addEventListener('change', run(async () => {
+    const [file] = els.pvBgFile.files;
+    els.pvBgFile.value = '';
+    if (!file) return;
+    const dataUrl = await prepareImage(file, 1920);   // fundo em resolução de transmissão
+    const { path } = await api('/api/upload', { body: { image: dataUrl } });
+    prefs.bgImage = path; prefs.bg = 'image'; savePrefs();
+    await applyBackground();
+    toast('Fundo de simulação atualizado.');
+  }));
+  addEventListener('resize', () => { if (isStudio() && prefs.zoom === 'fit') applyZoom(); });
+
+  /* ================= WebSocket ================= */
+  let retries = 0;
+  function connect() {
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+    ws.addEventListener('open', () => {
+      retries = 0;
+      els.conn.className = 'conn ok';
+      els.conn.title = 'Conectado ao servidor';
+    });
+    ws.addEventListener('message', (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch { return; }
+      if (msg.type === 'state') {
+        liveState = msg.state;
+        if (typeof msg.state?.now === 'number') clockOffset = msg.state.now - Date.now();
+        renderState();
+      } else if (msg.type === 'presets') {
+        const list = Array.isArray(msg.presets) ? msg.presets : [];
+        if (reorder) { pendingPresets = list; return; }   // não redesenha no meio do arraste
+        presets = list;
+        renderPresets();
+        // Se o preset em edição foi excluído em outro lugar, fecha o modal.
+        if (editingId && !presets.some((p) => p.id === editingId)) {
+          closeModal();
+          toast('O preset em edição foi excluído.', true);
+        }
+      }
+    });
+    ws.addEventListener('close', () => {
+      els.conn.className = 'conn bad';
+      els.conn.title = 'Desconectado — tentando reconectar…';
+      setTimeout(connect, Math.min(5000, 400 * 2 ** retries++));
+    });
+    ws.addEventListener('error', () => ws.close());
+  }
+
+  /* ================= Início ================= */
+  renderPresets();
+  connect();
+})();
+</script>
+</body>
+</html>
